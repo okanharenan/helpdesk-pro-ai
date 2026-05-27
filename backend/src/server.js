@@ -6,20 +6,20 @@ const path = require('path')
 
 const authRoutes = require('./routes/auth.routes')
 const ticketRoutes = require('./routes/ticket.routes')
+const userRoutes = require('./routes/user.routes')
 
 const app = express()
 
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }))
 app.use(express.json())
 
-// Servir arquivos de upload estaticamente
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')))
 
 app.use('/api/auth', authRoutes)
 app.use('/api/tickets', ticketRoutes)
+app.use('/api/users', userRoutes)
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }))
-
 
 app.use((err, req, res, next) => {
   console.error(err)

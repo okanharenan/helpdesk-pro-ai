@@ -2,44 +2,43 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 import Sidebar from '../../components/Sidebar/Sidebar'
 import Navbar from '../../components/Navbar/Navbar'
-import { useAuth } from '../../contexts/AuthContext'
+import { useThemeColors } from '../../hooks/useThemeColors'
 
 const API = import.meta.env.VITE_API_URL
 
 const ROLE_STYLE = {
-  SUPERADMIN: { bg: 'rgba(184,255,87,0.1)', color: '#b8ff57' },
-  ADMIN:      { bg: 'rgba(77,159,255,0.1)', color: '#4d9fff' },
-  AGENT:      { bg: 'rgba(255,170,77,0.1)', color: '#ffaa4d' },
-  CLIENT:     { bg: '#1a1a1a',              color: '#444'    },
+  SUPERADMIN: { bg: 'rgba(184,255,87,0.12)', color: '#7acc00' },
+  ADMIN:      { bg: 'rgba(77,159,255,0.12)', color: '#4d9fff' },
+  AGENT:      { bg: 'rgba(255,170,77,0.12)', color: '#ffaa4d' },
+  CLIENT:     { bg: 'rgba(120,120,120,0.1)', color: '#888888' },
 }
 
 export default function Users() {
-  const { user } = useAuth()
+  const t = useThemeColors()
   const [users, setUsers] = useState([])
+  const [myRole, setMyRole] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'AGENT' })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const isSuperAdmin = user?.app_metadata?.role === 'SUPERADMIN' ||
-    users.find(u => u.email === user?.email)?.role === 'SUPERADMIN'
-
   const token = localStorage.getItem('helpdesk_token')
   const headers = { Authorization: `Bearer ${token}` }
 
-  const fetchUsers = async () => {
+  const fetchData = async () => {
     try {
-      const { data } = await axios.get(`${API}/users`, { headers })
-      setUsers(data)
-    } catch {
-      console.error('Erro ao buscar usuários')
-    } finally {
-      setLoading(false)
-    }
+      const [usersRes, meRes] = await Promise.all([
+        axios.get(`${API}/users`, { headers }),
+        axios.get(`${API}/auth/me`, { headers }),
+      ])
+      setUsers(usersRes.data)
+      setMyRole(meRes.data.role)
+    } catch { console.error('Erro ao buscar dados') }
+    finally { setLoading(false) }
   }
 
-  useEffect(() => { fetchUsers() }, [])
+  useEffect(() => { fetchData() }, [])
 
   const handleCreate = async (e) => {
     e.preventDefault()
@@ -49,124 +48,102 @@ export default function Users() {
       await axios.post(`${API}/users`, form, { headers })
       setForm({ name: '', email: '', password: '', role: 'AGENT' })
       setShowForm(false)
-      fetchUsers()
-    } catch (err) {
-      setError(err.response?.data?.message || 'Erro ao criar usuário')
-    } finally {
-      setSubmitting(false)
-    }
+      fetchData()
+    } catch (err) { setError(err.response?.data?.message || 'Erro ao criar usuário') }
+    finally { setSubmitting(false) }
   }
 
   const handleRoleChange = async (id, role) => {
-    try {
-      await axios.patch(`${API}/users/${id}`, { role }, { headers })
-      fetchUsers()
-    } catch (err) {
-      alert(err.response?.data?.message || 'Erro ao atualizar role')
-    }
+    try { await axios.patch(`${API}/users/${id}`, { role }, { headers }); fetchData() }
+    catch (err) { alert(err.response?.data?.message || 'Erro') }
   }
 
   const handleToggleActive = async (id, active) => {
-    try {
-      await axios.patch(`${API}/users/${id}`, { active: !active }, { headers })
-      fetchUsers()
-    } catch (err) {
-      alert(err.response?.data?.message || 'Sem permissão')
-    }
+    try { await axios.patch(`${API}/users/${id}`, { active: !active }, { headers }); fetchData() }
+    catch (err) { alert(err.response?.data?.message || 'Sem permissão') }
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Tem certeza que deseja deletar este usuário?')) return
-    try {
-      await axios.delete(`${API}/users/${id}`, { headers })
-      fetchUsers()
-    } catch (err) {
-      alert(err.response?.data?.message || 'Sem permissão para deletar')
-    }
+    if (!confirm('Deletar este usuário?')) return
+    try { await axios.delete(`${API}/users/${id}`, { headers }); fetchData() }
+    catch (err) { alert(err.response?.data?.message || 'Sem permissão') }
   }
 
-  const myRole = users.find(u => u.email === user?.email)?.role
+  const isSuperAdmin = myRole === 'SUPERADMIN'
+  const card = { background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: 8 }
 
   return (
-    <div style={styles.page}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: t.bg, fontFamily: 'monospace' }}>
       <Sidebar />
-      <div style={styles.main}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <Navbar title="USUÁRIOS" subtitle="gestão de acessos" />
-        <div style={styles.content}>
+        <div style={{ padding: 24 }}>
 
-          <div style={styles.topRow}>
-            <div style={styles.summary}>
-              <span style={styles.summaryItem}>{users.length} total</span>
-              <span style={styles.summaryItem}>{users.filter(u => u.active).length} ativos</span>
-              <span style={styles.summaryItem}>{users.filter(u => u.role === 'AGENT').length} agentes</span>
-              <span style={styles.summaryItem}>{users.filter(u => u.role === 'ADMIN').length} admins</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 20 }}>
+              {[
+                { label: `${users.length} total` },
+                { label: `${users.filter(u => u.active).length} ativos` },
+                { label: `${users.filter(u => u.role === 'AGENT').length} agentes` },
+                { label: `${users.filter(u => u.role === 'ADMIN').length} admins` },
+              ].map(s => (
+                <span key={s.label} style={{ fontSize: 11, color: t.textMuted, letterSpacing: '0.08em' }}>{s.label}</span>
+              ))}
             </div>
-            {myRole === 'SUPERADMIN' && (
-              <button onClick={() => setShowForm(true)} style={styles.btnNew}>
+            {isSuperAdmin && (
+              <button onClick={() => setShowForm(true)} style={{ padding: '8px 14px', background: '#b8ff57', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 800, color: '#0d0d0d', cursor: 'pointer' }}>
                 + NOVO USUÁRIO
               </button>
             )}
           </div>
 
           {loading ? (
-            <div style={styles.empty}>carregando...</div>
+            <div style={{ textAlign: 'center', color: t.textMuted, fontSize: 12, padding: '60px 0' }}>carregando...</div>
+          ) : users.length === 0 ? (
+            <div style={{ textAlign: 'center', color: t.textMuted, fontSize: 12, padding: '60px 0' }}>nenhum usuário encontrado</div>
           ) : (
-            <div style={styles.table}>
-              <div style={styles.tableHead}>
+            <div style={card}>
+              <div style={{ display: 'flex', gap: 12, padding: '12px 16px', borderBottom: `1px solid ${t.border}`, fontSize: 9, color: t.textMuted, letterSpacing: '0.12em', textTransform: 'uppercase', background: t.tableHead, borderRadius: '8px 8px 0 0' }}>
                 <span style={{ flex: 1 }}>Nome</span>
                 <span style={{ width: 190 }}>Email</span>
                 <span style={{ width: 120 }}>Role</span>
                 <span style={{ width: 80 }}>Status</span>
                 <span style={{ width: 100 }}>Desde</span>
-                <span style={{ width: 100 }}>Ações</span>
+                <span style={{ width: 80 }}>Ações</span>
               </div>
-
               {users.map(u => (
-                <div key={u.id} style={{ ...styles.tableRow, opacity: u.active ? 1 : 0.45 }}>
-                  <span style={{ flex: 1, color: '#d0d0d0', fontSize: 12 }}>{u.name}</span>
-                  <span style={{ width: 190, color: '#444', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {u.email}
-                  </span>
-
-                  {/* Role */}
+                <div key={u.id} style={{ display: 'flex', gap: 12, padding: '13px 16px', borderBottom: `1px solid ${t.borderLight}`, alignItems: 'center', opacity: u.active ? 1 : 0.5 }}>
+                  <span style={{ flex: 1, color: t.textPrimary, fontSize: 13 }}>{u.name}</span>
+                  <span style={{ width: 190, color: t.textSecondary, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</span>
                   <span style={{ width: 120 }}>
-                    {u.role === 'SUPERADMIN' || myRole !== 'SUPERADMIN' ? (
-                      <span style={{ ...styles.badge, ...ROLE_STYLE[u.role] }}>
+                    {u.role === 'SUPERADMIN' || !isSuperAdmin ? (
+                      <span style={{ fontSize: 9, padding: '3px 8px', borderRadius: 3, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 500, ...ROLE_STYLE[u.role] }}>
                         {u.role}
                       </span>
                     ) : (
                       <select value={u.role} onChange={e => handleRoleChange(u.id, e.target.value)}
-                        style={styles.roleSelect}>
+                        style={{ background: t.inputBg, border: `1px solid ${t.border}`, borderRadius: 4, padding: '4px 8px', fontSize: 10, color: t.textSecondary, fontFamily: 'monospace', cursor: 'pointer', outline: 'none' }}>
                         <option value="ADMIN">ADMIN</option>
                         <option value="AGENT">AGENT</option>
                         <option value="CLIENT">CLIENT</option>
                       </select>
                     )}
                   </span>
-
-                  {/* Status ativo/inativo */}
                   <span style={{ width: 80 }}>
-                    {u.role !== 'SUPERADMIN' && myRole === 'SUPERADMIN' ? (
+                    {u.role !== 'SUPERADMIN' && isSuperAdmin ? (
                       <button onClick={() => handleToggleActive(u.id, u.active)}
-                        style={{ ...styles.toggleBtn, color: u.active ? '#b8ff57' : '#444', borderColor: u.active ? '#b8ff57' : '#333' }}>
+                        style={{ padding: '3px 10px', background: 'transparent', borderRadius: 4, fontSize: 9, cursor: 'pointer', border: `1px solid ${u.active ? '#b8ff57' : t.border}`, color: u.active ? '#b8ff57' : t.textMuted, fontFamily: 'monospace', letterSpacing: '0.08em' }}>
                         {u.active ? 'ativo' : 'inativo'}
                       </button>
                     ) : (
-                      <span style={{ ...styles.badge, ...ROLE_STYLE[u.role], opacity: 0.5 }}>
-                        {u.active ? 'ativo' : 'inativo'}
-                      </span>
+                      <span style={{ fontSize: 11, color: u.active ? '#b8ff57' : t.textMuted }}>{u.active ? 'ativo' : 'inativo'}</span>
                     )}
                   </span>
-
-                  {/* Data */}
-                  <span style={{ width: 100, color: '#333', fontSize: 11 }}>
-                    {new Date(u.createdAt).toLocaleDateString('pt-BR')}
-                  </span>
-
-                  {/* Deletar — só SUPERADMIN */}
-                  <span style={{ width: 100 }}>
-                    {u.role !== 'SUPERADMIN' && myRole === 'SUPERADMIN' && (
-                      <button onClick={() => handleDelete(u.id)} style={styles.deleteBtn}>
+                  <span style={{ width: 100, color: t.textMuted, fontSize: 11 }}>{new Date(u.createdAt).toLocaleDateString('pt-BR')}</span>
+                  <span style={{ width: 80 }}>
+                    {u.role !== 'SUPERADMIN' && isSuperAdmin && (
+                      <button onClick={() => handleDelete(u.id)}
+                        style={{ padding: '4px 10px', background: 'transparent', border: '1px solid #ff4d4d', borderRadius: 4, color: '#ff4d4d', fontSize: 10, cursor: 'pointer', fontFamily: 'monospace' }}>
                         deletar
                       </button>
                     )}
@@ -178,78 +155,52 @@ export default function Users() {
         </div>
       </div>
 
-      {/* Modal criar usuário — só SUPERADMIN vê */}
+      {/* Modal criar */}
       {showForm && (
-        <div style={styles.overlay}>
-          <div style={styles.modal}>
-            <div style={styles.modalHead}>
-              <span style={styles.modalTitle}>[ NOVO USUÁRIO ]</span>
-              <button onClick={() => setShowForm(false)} style={styles.closeBtn}>✕</button>
+        <div style={{ position: 'fixed', inset: 0, background: t.overlay, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div style={{ background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: 10, padding: '24px 28px', width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: t.textPrimary }}>[ NOVO USUÁRIO ]</span>
+              <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', fontSize: 16 }}>✕</button>
             </div>
-            <form onSubmit={handleCreate} style={styles.form}>
-              <div style={styles.field}>
-                <label style={styles.label}>Nome completo</label>
-                <input style={styles.input} placeholder="Ex: João Silva"
-                  value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
-              </div>
-              <div style={styles.field}>
-                <label style={styles.label}>Email corporativo</label>
-                <input type="email" style={styles.input} placeholder="joao@empresa.com"
-                  value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required />
-              </div>
-              <div style={styles.field}>
-                <label style={styles.label}>Senha provisória</label>
-                <input type="password" style={styles.input} placeholder="mínimo 6 caracteres"
-                  value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required />
-              </div>
-              <div style={styles.field}>
-                <label style={styles.label}>Função</label>
-                <select style={styles.input} value={form.role}
-                  onChange={e => setForm({ ...form, role: e.target.value })}>
-                  <option value="AGENT">Agente — vê todos os tickets, comenta, não edita</option>
-                  <option value="ADMIN">Admin — vê e edita todos os tickets</option>
-                  <option value="CLIENT">Cliente — abre e comenta nos próprios tickets</option>
+            <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {[
+                { label: 'Nome completo', key: 'name', placeholder: 'Ex: João Silva', type: 'text' },
+                { label: 'Email', key: 'email', placeholder: 'joao@empresa.com', type: 'email' },
+                { label: 'Senha provisória', key: 'password', placeholder: 'mínimo 6 caracteres', type: 'password' },
+              ].map(f => (
+                <div key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <label style={{ fontSize: 10, color: t.textMuted, letterSpacing: '0.15em', textTransform: 'uppercase' }}>{f.label}</label>
+                  <input type={f.type} placeholder={f.placeholder}
+                    style={{ background: t.inputBg, border: `1px solid ${t.border}`, borderRadius: 6, padding: '9px 12px', fontSize: 12, color: t.textPrimary, fontFamily: 'monospace', outline: 'none' }}
+                    value={form[f.key]} onChange={e => setForm({ ...form, [f.key]: e.target.value })} required />
+                </div>
+              ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <label style={{ fontSize: 10, color: t.textMuted, letterSpacing: '0.15em', textTransform: 'uppercase' }}>Função</label>
+                <select style={{ background: t.inputBg, border: `1px solid ${t.border}`, borderRadius: 6, padding: '9px 12px', fontSize: 12, color: t.textPrimary, fontFamily: 'monospace', outline: 'none' }}
+                  value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+                  <option value="AGENT">Agente</option>
+                  <option value="ADMIN">Admin</option>
+                  <option value="CLIENT">Cliente</option>
                 </select>
               </div>
-
-              {/* Card explicativo das permissões */}
-              <div style={styles.permBox}>
-                <p style={styles.permTitle}>permissões da função selecionada</p>
-                {form.role === 'AGENT' && (
-                  <ul style={styles.permList}>
-                    <li style={styles.permItem}>✅ Ver todos os tickets abertos</li>
-                    <li style={styles.permItem}>✅ Comentar em qualquer ticket</li>
-                    <li style={styles.permItem}>✅ Abrir ticket próprio</li>
-                    <li style={styles.permItem}>❌ Mudar status ou prioridade</li>
-                    <li style={styles.permItem}>❌ Criar ou deletar usuários</li>
-                  </ul>
-                )}
-                {form.role === 'ADMIN' && (
-                  <ul style={styles.permList}>
-                    <li style={styles.permItem}>✅ Ver todos os tickets</li>
-                    <li style={styles.permItem}>✅ Mudar status e prioridade</li>
-                    <li style={styles.permItem}>✅ Comentar em qualquer ticket</li>
-                    <li style={styles.permItem}>✅ Abrir ticket próprio</li>
-                    <li style={styles.permItem}>❌ Criar ou deletar usuários</li>
-                    <li style={styles.permItem}>❌ Deletar tickets</li>
-                  </ul>
-                )}
-                {form.role === 'CLIENT' && (
-                  <ul style={styles.permList}>
-                    <li style={styles.permItem}>✅ Abrir ticket</li>
-                    <li style={styles.permItem}>✅ Comentar nos próprios tickets</li>
-                    <li style={styles.permItem}>❌ Ver tickets de outros</li>
-                    <li style={styles.permItem}>❌ Mudar status ou prioridade</li>
-                  </ul>
-                )}
+              <div style={{ background: t.inputBg, border: `1px solid ${t.border}`, borderRadius: 6, padding: '10px 14px' }}>
+                <div style={{ fontSize: 9, color: t.textMuted, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6 }}>permissões · {form.role.toLowerCase()}</div>
+                <div style={{ fontSize: 11, color: t.textSecondary, lineHeight: 1.8 }}>
+                  {form.role === 'AGENT' && 'Vê todos os tickets, comenta em qualquer um, não pode mudar status ou prioridade.'}
+                  {form.role === 'ADMIN' && 'Vê e edita todos os tickets, muda status e prioridade, não cria ou deleta usuários.'}
+                  {form.role === 'CLIENT' && 'Abre tickets e comenta apenas nos seus próprios chamados.'}
+                </div>
               </div>
-
-              {error && <p style={styles.error}>{error}</p>}
-              <div style={styles.modalBtns}>
-                <button type="button" onClick={() => setShowForm(false)} style={styles.cancelBtn}>
+              {error && <p style={{ fontSize: 12, color: '#ff4d4d', textAlign: 'center' }}>{error}</p>}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" onClick={() => setShowForm(false)}
+                  style={{ flex: 1, padding: '9px', background: t.inputBg, border: `1px solid ${t.border}`, borderRadius: 6, color: t.textSecondary, fontSize: 12, cursor: 'pointer', fontFamily: 'monospace' }}>
                   Cancelar
                 </button>
-                <button type="submit" style={styles.submitBtn} disabled={submitting}>
+                <button type="submit" disabled={submitting}
+                  style={{ flex: 1, padding: '9px', background: '#b8ff57', border: 'none', borderRadius: 6, color: '#0d0d0d', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'monospace' }}>
                   {submitting ? 'Criando...' : 'CRIAR USUÁRIO →'}
                 </button>
               </div>
@@ -259,39 +210,4 @@ export default function Users() {
       )}
     </div>
   )
-}
-
-const styles = {
-  page: { display: 'flex', minHeight: '100vh', background: '#0d0d0d', fontFamily: 'monospace' },
-  main: { flex: 1, display: 'flex', flexDirection: 'column' },
-  content: { padding: 24 },
-  topRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  summary: { display: 'flex', gap: 20 },
-  summaryItem: { fontSize: 11, color: '#444', letterSpacing: '0.08em' },
-  btnNew: { padding: '8px 14px', background: '#b8ff57', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 800, color: '#0d0d0d', cursor: 'pointer' },
-  empty: { textAlign: 'center', color: '#333', fontSize: 12, padding: '60px 0' },
-  table: { background: '#111', border: '1px solid #1a1a1a', borderRadius: 8 },
-  tableHead: { display: 'flex', gap: 12, padding: '12px 16px', borderBottom: '1px solid #1a1a1a', fontSize: 9, color: '#333', letterSpacing: '0.12em', textTransform: 'uppercase' },
-  tableRow: { display: 'flex', gap: 12, padding: '13px 16px', borderBottom: '1px solid #151515', alignItems: 'center' },
-  badge: { fontSize: 9, padding: '3px 8px', borderRadius: 3, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 500 },
-  roleSelect: { background: '#1a1a1a', border: '1px solid #222', borderRadius: 4, padding: '4px 8px', fontSize: 10, color: '#888', fontFamily: 'monospace', cursor: 'pointer', outline: 'none' },
-  toggleBtn: { padding: '3px 10px', background: 'transparent', borderRadius: 4, fontSize: 9, cursor: 'pointer', border: '1px solid', letterSpacing: '0.08em', textTransform: 'uppercase' },
-  deleteBtn: { padding: '4px 10px', background: 'transparent', border: '1px solid #ff4d4d', borderRadius: 4, color: '#ff4d4d', fontSize: 10, cursor: 'pointer' },
-  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 },
-  modal: { background: '#111', border: '1px solid #1f1f1f', borderRadius: 10, padding: '24px 28px', width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto' },
-  modalHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
-  modalTitle: { fontSize: 14, fontWeight: 800, color: '#f0f0f0' },
-  closeBtn: { background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: 16 },
-  form: { display: 'flex', flexDirection: 'column', gap: 14 },
-  field: { display: 'flex', flexDirection: 'column', gap: 5 },
-  label: { fontSize: 9, color: '#444', letterSpacing: '0.15em', textTransform: 'uppercase' },
-  input: { background: '#1a1a1a', border: '1px solid #222', borderRadius: 6, padding: '9px 12px', fontSize: 12, color: '#d0d0d0', fontFamily: 'monospace', outline: 'none' },
-  permBox: { background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: 6, padding: '12px 14px' },
-  permTitle: { fontSize: 9, color: '#333', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 },
-  permList: { listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 5 },
-  permItem: { fontSize: 11, color: '#555' },
-  error: { fontSize: 12, color: '#ff4d4d', textAlign: 'center' },
-  modalBtns: { display: 'flex', gap: 8, marginTop: 4 },
-  cancelBtn: { flex: 1, padding: '9px', background: '#1a1a1a', border: '1px solid #222', borderRadius: 6, color: '#444', fontSize: 12, cursor: 'pointer', fontFamily: 'monospace' },
-  submitBtn: { flex: 1, padding: '9px', background: '#b8ff57', border: 'none', borderRadius: 6, color: '#0d0d0d', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'monospace' },
 }

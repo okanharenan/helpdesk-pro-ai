@@ -13,10 +13,12 @@ const requireRole = (...roles) => async (req, res, next) => {
 }
 
 const getUsers = async (req, res) => {
+  console.log('getUsers chamado por:', req.user?.email)
   const users = await prisma.user.findMany({
     select: { id: true, name: true, email: true, role: true, active: true, createdAt: true },
     orderBy: { createdAt: 'desc' }
   })
+  console.log('Usuários encontrados:', users.length)
   return res.json(users)
 }
 
