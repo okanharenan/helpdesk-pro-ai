@@ -2,7 +2,6 @@ import { createContext, useContext, useState } from 'react'
 import axios from 'axios'
 
 const AuthContext = createContext(null)
-
 const API = import.meta.env.VITE_API_URL
 
 export function AuthProvider({ children }) {
@@ -18,11 +17,7 @@ export function AuthProvider({ children }) {
   }
 
   const register = async (name, email, password) => {
-    const { data } = await axios.post(`${API}/auth/register`, {
-      name,
-      email,
-      password,
-    })
+    const { data } = await axios.post(`${API}/auth/register`, { name, email, password })
     login(data.user, data.token)
   }
 
@@ -33,6 +28,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     localStorage.removeItem('helpdesk_user')
     localStorage.removeItem('helpdesk_token')
+    sessionStorage.removeItem('helpdesk_me')
     setUser(null)
   }
 
@@ -43,6 +39,4 @@ export function AuthProvider({ children }) {
   )
 }
 
-export function useAuth() {
-  return useContext(AuthContext)
-}
+export function useAuth() { return useContext(AuthContext) }

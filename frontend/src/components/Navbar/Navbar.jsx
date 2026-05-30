@@ -1,31 +1,22 @@
 import { useTheme } from '../../contexts/ThemeContext'
 
-const DARK = { bg: '#0a0a0a', border: '#1f1f1f', textPrimary: '#f0f0f0', textMuted: '#555' }
-const LIGHT = { bg: '#ffffff', border: '#e0e0e0', textPrimary: '#111111', textMuted: '#999' }
-
 export default function Navbar({ title = 'OVERVIEW', subtitle = 'resumo geral' }) {
   const { dark } = useTheme()
-  const t = dark ? DARK : LIGHT
+  const bg     = dark ? '#0a0a0a' : '#ffffff'
+  const border = dark ? '#242424' : '#e0e0e0'
+  const text   = dark ? '#f4f4f4' : '#111111'
+  const muted  = dark ? '#888888' : '#666666'
 
   return (
-    <div style={{ ...styles.navbar, background: t.bg, borderBottom: `1px solid ${t.border}` }}>
+    <div className="anim-slide" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', background: bg, borderBottom: `1px solid ${border}`, fontFamily: 'monospace', flexShrink: 0 }}>
       <div>
-        <div style={{ ...styles.title, color: t.textPrimary }}>{title}</div>
-        <div style={{ ...styles.subtitle, color: t.textMuted }}>{subtitle}</div>
+        <div style={{ fontSize: 18, fontWeight: 800, color: text, letterSpacing: '-0.3px' }}>{title}</div>
+        <div style={{ fontSize: 9, color: muted, letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 3 }}>{subtitle}</div>
       </div>
-      <div style={styles.right}>
-        <div style={styles.statusDot} />
-        <span style={{ ...styles.statusText, color: t.textMuted }}>sistema online</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#b8ff57' }} className="anim-pulse" />
+        <span style={{ fontSize: 10, color: muted, letterSpacing: '0.1em' }}>sistema online</span>
       </div>
     </div>
   )
-}
-
-const styles = {
-  navbar: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', fontFamily: 'monospace' },
-  title: { fontSize: 18, fontWeight: 800, letterSpacing: '-0.3px' },
-  subtitle: { fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: 3 },
-  right: { display: 'flex', alignItems: 'center', gap: 8 },
-  statusDot: { width: 6, height: 6, borderRadius: '50%', background: '#b8ff57' },
-  statusText: { fontSize: 10, letterSpacing: '0.1em' },
 }

@@ -13,6 +13,15 @@ const app = express()
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }))
 app.use(express.json())
 
+// Log de tempo — ANTES das rotas
+app.use((req, res, next) => {
+  const start = Date.now()
+  res.on('finish', () => {
+    console.log(`${req.method} ${req.path} — ${Date.now() - start}ms`)
+  })
+  next()
+})
+
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')))
 
 app.use('/api/auth', authRoutes)
