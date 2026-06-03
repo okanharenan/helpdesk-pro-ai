@@ -3,6 +3,13 @@
 .env.local
 .env.development.local
 .env.production.local
+.env.test.local
+
+# Dependências
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
 # Logs
 logs
@@ -13,18 +20,46 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Arquivos gerados de build
+dist/
+dist-ssr/
 *.local
+.vite/
 
-# Editor directories and files
-.vscode/*
+# IDE
+.vscode/
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.swp
+*.swo
+*~
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Arquivos temporários
+tmp/
+temp/
+.tmp/
+
+# Cache
+.cache/
+.eslintcache
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Build cache
+.parcel-cache/
+dist/
+
+# Arquivos de sistema
+.env.local
+.env.*.local
