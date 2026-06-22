@@ -12,6 +12,7 @@ pnpm-lock.yaml
 .env.production.local
 .env.test.local
 
+
 # Logs
 logs
 *.log
@@ -28,6 +29,9 @@ build
 # Uploads
 uploads/
 storage/
+uploads/*
+!uploads/.gitkeep
+.DS_Store
 
 # Banco local
 *.sqlite
