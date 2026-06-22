@@ -3,6 +3,7 @@ import Dashboard from '../pages/Dashboard/Dashboard'
 import Tickets from '../pages/Tickets/Tickets'
 import TicketDetails from '../pages/TicketDetails/TicketDetails'
 import Users from '../pages/Users/Users'
+import Reports from '../pages/Reports/Reports'
 import Login from '../pages/Login/login'
 import Register from '../pages/Register/Register'
 import ForgotPassword from '../pages/ForgotPassword/ForgotPassword'
@@ -22,6 +23,7 @@ export default function AppRoutes() {
           <Route path="/tickets" element={<Tickets />} />
           <Route path="/tickets/:id" element={<TicketDetails />} />
           <Route path="/users" element={<Users />} />
+          <Route path="/reports" element={<Reports />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
