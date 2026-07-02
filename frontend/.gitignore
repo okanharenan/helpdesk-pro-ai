@@ -4,7 +4,7 @@
 .env.development.local
 .env.production.local
 .env.test.local
-.env.production   
+# .env.production   ← comente assim 
 
 # Dependências
 node_modules/
