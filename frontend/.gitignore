@@ -62,5 +62,8 @@ coverage/
 dist/
 
 # Arquivos de sistema
+.env
 .env.local
-.env.*.local
+.env.development.local
+.env.production.local
+.env.test.local
