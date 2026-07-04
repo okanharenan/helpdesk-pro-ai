@@ -10,10 +10,28 @@ const userRoutes = require('./routes/user.routes')
 
 const app = express()
 
-app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }))
+const allowedOrigins = [
+  'https://helpdesk-pro-ai.vercel.app',
+  'https://helpdesk-pro-ai-okanharenans-projects.vercel.app',
+  'https://www.helpdesk-pro-ai.com.br',
+  'http://localhost:5173',
+  'http://localhost:5174',
+]
+
+app.use(cors({
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true)
+    } else {
+      console.log('CORS bloqueado para origem:', origin)
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
+  credentials: true
+}))
+
 app.use(express.json())
 
-// Log de tempo — ANTES das rotas
 app.use((req, res, next) => {
   const start = Date.now()
   res.on('finish', () => {
@@ -28,7 +46,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/tickets', ticketRoutes)
 app.use('/api/users', userRoutes)
 
-app.get('/health', (req, res) => res.json({ status: 'ok' }))
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 
 app.use((err, req, res, next) => {
   console.error(err)
