@@ -9,6 +9,7 @@ import Register from '../pages/Register/Register'
 import ForgotPassword from '../pages/ForgotPassword/ForgotPassword'
 import AuthCallback from '../pages/AuthCallback/AuthCallback'
 import ProtectedRoute from '../components/ProtectedRoute/ProtectedRoute'
+import Settings from '../pages/Settings/Settings'
 
 export default function AppRoutes() {
   return (
@@ -24,6 +25,7 @@ export default function AppRoutes() {
           <Route path="/tickets/:id" element={<TicketDetails />} />
           <Route path="/users" element={<Users />} />
           <Route path="/reports" element={<Reports />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -12,6 +12,7 @@ const links = [
   { path: "/tickets", label: "Tickets", icon: "ti-ticket" },
   { path: "/users", label: "Usuários", icon: "ti-users" },
   { path: "/reports", label: "Relatórios", icon: "ti-chart-bar" },
+  { path: '/settings', label: 'Configurações', icon: 'ti-settings', color: '#7c3aed' },
 ];
 
 export default function Sidebar() {

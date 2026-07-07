@@ -7,6 +7,9 @@ const path = require('path')
 const authRoutes = require('./routes/auth.routes')
 const ticketRoutes = require('./routes/ticket.routes')
 const userRoutes = require('./routes/user.routes')
+const settingsRoutes = require('./routes/settings.routes')
+
+app.use('/api/settings', settingsRoutes)
 
 const app = express()
 

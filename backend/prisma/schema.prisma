@@ -45,3 +45,20 @@ model Comment {
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
 }
+
+model Permission {
+  id                   Int      @id @default(autoincrement())
+  role                 String   @unique
+  canViewAllTickets    Boolean  @default(true)
+  canCreateTicket      Boolean  @default(true)
+  canEditTicket        Boolean  @default(false)
+  canDeleteTicket      Boolean  @default(false)
+  canChangeStatus      Boolean  @default(false)
+  canChangePriority    Boolean  @default(false)
+  canCommentAny        Boolean  @default(false)
+  canViewReports       Boolean  @default(false)
+  canManageUsers       Boolean  @default(false)
+  canViewUsers         Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
