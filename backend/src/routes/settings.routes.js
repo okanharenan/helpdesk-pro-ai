@@ -10,8 +10,8 @@ router.use((req, res, next) => {
   next()
 })
 
-// TEMPORARIAMENTE COMENTADO PARA TESTE:
-// router.use(requireRole('SUPERADMIN'))
+
+router.use(requireRole('SUPERADMIN'))
 
 router.get('/permissions', getPermissions)
 router.patch('/permissions/:role', updatePermission)
