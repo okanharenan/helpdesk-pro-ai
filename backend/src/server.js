@@ -4,12 +4,10 @@ const express = require('express')
 const cors = require('cors')
 const path = require('path')
 
-const authRoutes = require('./routes/auth.routes')
-const ticketRoutes = require('./routes/ticket.routes')
-const userRoutes = require('./routes/user.routes')
+const authRoutes     = require('./routes/auth.routes')
+const ticketRoutes   = require('./routes/ticket.routes')
+const userRoutes     = require('./routes/user.routes')
 const settingsRoutes = require('./routes/settings.routes')
-
-app.use('/api/settings', settingsRoutes)
 
 const app = express()
 
@@ -45,9 +43,10 @@ app.use((req, res, next) => {
 
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')))
 
-app.use('/api/auth', authRoutes)
-app.use('/api/tickets', ticketRoutes)
-app.use('/api/users', userRoutes)
+app.use('/api/auth',     authRoutes)
+app.use('/api/tickets',  ticketRoutes)
+app.use('/api/users',    userRoutes)
+app.use('/api/settings', settingsRoutes)
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }))
 
