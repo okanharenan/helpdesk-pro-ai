@@ -3,6 +3,12 @@ const { getPermissions, updatePermission, getStats } = require('../controllers/s
 const { protect, requireRole } = require('../middlewares/auth.middleware')
 
 router.use(protect)
+
+router.use((req, res, next) => {
+  console.log('Settings — role:', req.user?.role, '| email:', req.user?.email)
+  next()
+})
+
 router.use(requireRole('SUPERADMIN'))
 
 router.get('/permissions', getPermissions)
