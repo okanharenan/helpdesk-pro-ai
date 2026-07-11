@@ -178,14 +178,15 @@ export default function Settings() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [permsRes, usersRes, statsRes] = await Promise.all([
+      const [permsRes, usersRes, statsRes] = await Promise.allSettled([
         axios.get(`${API}/settings/permissions`, { headers }),
         axios.get(`${API}/users`, { headers }),
         axios.get(`${API}/settings/stats`, { headers }),
       ]);
-      setPermissions(permsRes.data);
-      setUsers(usersRes.data);
-      setStats(statsRes.data);
+
+      if (permsRes.status === "fulfilled") setPermissions(permsRes.value.data);
+      if (usersRes.status === "fulfilled") setUsers(usersRes.value.data);
+      if (statsRes.status === "fulfilled") setStats(statsRes.value.data);
     } catch (err) {
       console.error(err);
     } finally {

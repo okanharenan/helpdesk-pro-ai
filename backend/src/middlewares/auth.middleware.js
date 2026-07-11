@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const { PrismaClient } = require("@prisma/client");
+const redis = require("../config/redis");
 const prisma = new PrismaClient();
 
 const protect = async (req, res, next) => {
@@ -23,11 +24,31 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ message: "Token expirado" });
     }
 
-    // Busca o role do usuário no banco
-    const dbUser = await prisma.user.findUnique({
-      where: { email: decoded.email },
-      select: { id: true, email: true, name: true, role: true, active: true },
-    });
+    // Tenta pegar do cache mas sempre valida o role no banco
+    const cacheKey = `me:${decoded.email}`;
+    let dbUser = null;
+
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        dbUser = typeof cached === "string" ? JSON.parse(cached) : cached;
+        // Se o role no cache for 'authenticated', invalida o cache
+        if (!dbUser.role || dbUser.role === "authenticated") {
+          await redis.del(cacheKey);
+          dbUser = null;
+        }
+      }
+    } catch {}
+
+    if (!dbUser) {
+      dbUser = await prisma.user.findUnique({
+        where: { email: decoded.email },
+        select: { id: true, email: true, name: true, role: true, active: true },
+      });
+      if (dbUser) {
+        await redis.set(cacheKey, JSON.stringify(dbUser), { ex: 300 });
+      }
+    }
 
     if (!dbUser || !dbUser.active) {
       return res
@@ -41,7 +62,6 @@ const protect = async (req, res, next) => {
       role: dbUser.role,
       name: dbUser.name,
       dbId: dbUser.id,
-      ...decoded,
     };
 
     console.log(`auth.middleware — ${Date.now() - start}ms`);
