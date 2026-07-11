@@ -50,15 +50,15 @@ app.use("/api/tickets", ticketRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/settings", settingsRoutes);
 
-app.get("/api/clear-me-cache", async (req, res) => {
+app.get('/api/clear-all-cache', async (req, res) => {
   try {
-    const redis = require("./config/redis");
-    await redis.del("me:okanharenan1@gmail.com");
-    res.json({ ok: true, msg: "Cache limpo com sucesso" });
+    const redis = require('./config/redis')
+    await redis.flushall()
+    res.json({ ok: true, msg: 'Todo o cache limpo' })
   } catch (err) {
-    res.json({ ok: false, err: err.message });
+    res.json({ ok: false, err: err.message })
   }
-});
+})
 
 app.use((err, req, res, next) => {
   console.error(err);
