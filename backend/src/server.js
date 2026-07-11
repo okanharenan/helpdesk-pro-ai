@@ -52,9 +52,9 @@ app.use("/api/settings", settingsRoutes);
 
 app.get("/api/clear-me-cache", async (req, res) => {
   try {
-    const { redis } = require("./config/redis");
+    const redis = require("./config/redis");
     await redis.del("me:okanharenan1@gmail.com");
-    res.json({ ok: true, msg: "Cache do usuário limpo com sucesso" });
+    res.json({ ok: true, msg: "Cache limpo com sucesso" });
   } catch (err) {
     res.json({ ok: false, err: err.message });
   }
