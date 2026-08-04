@@ -1,10 +1,10 @@
+import { useEffect } from "react";
 import AppRoutes from "./routes/AppRoutes";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { MeProvider } from "./contexts/MeContext";
 
 function App() {
-  // Adicione isso no seu App.jsx, dentro do componente App:
   useEffect(() => {
     const LIMIT = 72 * 60 * 60 * 1000;
 
@@ -22,11 +22,9 @@ function App() {
       }
     };
 
-    // Atualiza ao interagir
     window.addEventListener("click", updateActivity);
     window.addEventListener("keydown", updateActivity);
 
-    // Checa a cada 5 minutos
     const interval = setInterval(checkInactivity, 5 * 60 * 1000);
 
     return () => {
@@ -35,6 +33,7 @@ function App() {
       clearInterval(interval);
     };
   }, []);
+
   return (
     <ThemeProvider>
       <AuthProvider>
