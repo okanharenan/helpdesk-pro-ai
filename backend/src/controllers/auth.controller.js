@@ -36,11 +36,16 @@ const login = async (req, res) => {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) return res.status(401).json({ message: 'Credenciais inválidas' })
 
-  const dbUser = await prisma.user.findUnique({ where: { email } })
+  // Garante que o usuário existe no banco
+  let dbUser = await prisma.user.findUnique({ where: { email } })
+  if (!dbUser) {
+    const name = data.user?.user_metadata?.name || email.split('@')[0]
+    dbUser = await prisma.user.create({
+      data: { name, email, password: '', provider: 'email', active: true }
+    })
+  }
 
-  const userPayload = { ...data.user, role: dbUser?.role }
-
-  // Cacheia os dados do usuário por 5 minutos
+  const userPayload = { ...data.user, role: dbUser.role }
   await cache.set(`me:${email}`, userPayload, 60 * 5)
 
   return res.json({ user: userPayload, token: data.session.access_token })
