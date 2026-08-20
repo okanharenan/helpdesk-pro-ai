@@ -1,6 +1,10 @@
-const jwt = require("jsonwebtoken");
+const { createRemoteJWKSet, jwtVerify } = require("jose");
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
+
+const JWKS = createRemoteJWKSet(
+  new URL(`${process.env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`)
+);
 
 const protect = async (req, res, next) => {
   try {
@@ -10,19 +14,21 @@ const protect = async (req, res, next) => {
     }
 
     const token = auth.split(" ")[1];
-    const decoded = jwt.decode(token);
 
-    if (!decoded || !decoded.email) {
+    let payload;
+    try {
+      const result = await jwtVerify(token, JWKS);
+      payload = result.payload;
+    } catch (err) {
       return res.status(401).json({ message: "Token inválido" });
     }
 
-    if (decoded.exp && decoded.exp < Math.floor(Date.now() / 1000)) {
-      return res.status(401).json({ message: "Token expirado" });
+    if (!payload || !payload.email) {
+      return res.status(401).json({ message: "Token inválido" });
     }
 
-    // Busca role diretamente no banco sem cache
     const dbUser = await prisma.user.findUnique({
-      where: { email: decoded.email },
+      where: { email: payload.email },
       select: { id: true, email: true, name: true, role: true, active: true },
     });
 
@@ -30,15 +36,18 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ message: "Usuário não encontrado" });
     }
 
+    if (dbUser.active === false) {
+      return res.status(403).json({ message: "Usuário desativado" });
+    }
+
     req.user = {
-      id: decoded.sub,
+      id: payload.sub,
       dbId: dbUser.id,
       email: dbUser.email,
       name: dbUser.name,
       role: dbUser.role,
     };
 
-    console.log(`[middleware] email: ${dbUser.email} | role: ${dbUser.role}`);
     next();
   } catch (err) {
     console.error("[middleware] erro:", err.message);

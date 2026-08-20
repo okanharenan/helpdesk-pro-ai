@@ -487,36 +487,38 @@ export default function TicketDetails() {
                 </p>
 
                 {ticket.fileUrl && (
-                  <a
-                    href={
-                      ticket.fileUrl?.startsWith("http")
-                        ? ticket.fileUrl
-                        : `${import.meta.env.VITE_API_URL || ""}${ticket.fileUrl}`
-                    }
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    onClick={async () => {
+                      try {
+                        const token = localStorage.getItem("helpdesk_token");
+                        const url = ticket.fileUrl?.startsWith("http")
+                          ? ticket.fileUrl
+                          : `${import.meta.env.VITE_API_URL || ""}${ticket.fileUrl}`;
+                        const res = await axios.get(url, {
+                          headers: { Authorization: `Bearer ${token}` },
+                          responseType: "blob",
+                        });
+                        const blobUrl = window.URL.createObjectURL(res.data);
+                        const link = document.createElement("a");
+                        link.href = blobUrl;
+                        link.download = ticket.fileUrl.split("/").pop();
+                        document.body.appendChild(link);
+                        link.click();
+                        link.remove();
+                        window.URL.revokeObjectURL(blobUrl);
+                      } catch (err) {
+                        console.error("Erro ao baixar anexo:", err);
+                      }
+                    }}
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 7,
-                      fontSize: 12,
-                      color: "#2563eb",
-                      padding: "7px 14px",
-                      background: "rgba(59,130,246,0.08)",
-                      borderRadius: 8,
-                      textDecoration: "none",
-                      marginTop: 14,
-                      border: "1px solid rgba(59,130,246,0.2)",
-                      fontWeight: 500,
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 0,
                     }}
                   >
-                    <i
-                      className="ti ti-paperclip"
-                      style={{ fontSize: 14 }}
-                      aria-hidden="true"
-                    />
-                    Ver anexo
-                  </a>
+                    {/* mantenha aqui dentro o mesmo conteúdo/ícone/texto que estava dentro do <a> original */}
+                  </button>
                 )}
 
                 {/* Meta info */}

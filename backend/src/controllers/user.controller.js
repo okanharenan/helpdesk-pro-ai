@@ -81,7 +81,7 @@ const updateUser = async (req, res) => {
   const dbUser = await prisma.user.findUnique({
     where: { email: req.user.email },
   });
-  const { role } = req.body;
+  const { role, active } = req.body;
   const { id } = req.params;
 
   if (role && !ALLOWED_ROLES.includes(role)) {
@@ -96,17 +96,19 @@ const updateUser = async (req, res) => {
       .status(403)
       .json({ message: "Não é possível editar o SUPERADMIN" });
   }
-  // Invalida cache do usuário atualizado
+
   await cache.del(`me:${target.email}`);
   await cache.del("users:all");
 
   const user = await prisma.user.update({
     where: { id: Number(id) },
-    data: { ...(role && { role }) },
-    select: { id: true, name: true, email: true, role: true },
+    data: {
+      ...(role && { role }),
+      ...(typeof active === "boolean" && { active }),
+    },
+    select: { id: true, name: true, email: true, role: true, active: true },
   });
 
-  // Invalida cache
   await cache.del("users:all");
 
   return res.json(user);

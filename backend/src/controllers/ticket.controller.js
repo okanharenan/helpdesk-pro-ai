@@ -100,25 +100,38 @@ const getTicketById = async (req, res) => {
   return res.json(ticket)
 }
 
+const VALID_STATUS = ['OPEN', 'DOING', 'RESOLVED', 'CLOSED']
+const VALID_PRIORITY = ['LOW', 'MEDIUM', 'HIGH']
+
 const updateTicket = async (req, res) => {
   const dbUser = await getDbUser(req.user.email)
+  if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
+
   const perm = await getPermission(dbUser.role)
   const { status, priority, title, description } = req.body
   const ticketId = Number(req.params.id)
 
-  // Verifica permissão de editar
-  if (title || description) {
-    if (!perm?.canEditTicket) {
-      return res.status(403).json({ message: 'Sem permissão para editar tickets' })
-    }
+  const existing = await prisma.ticket.findUnique({ where: { id: ticketId } })
+  if (!existing) return res.status(404).json({ message: 'Ticket não encontrado' })
+
+  const isOwner = existing.userId === dbUser.id
+  if (!perm?.canViewAllTickets && !isOwner) {
+    return res.status(403).json({ message: 'Acesso negado' })
   }
 
-  // Verifica permissão de alterar status
+  if (status && !VALID_STATUS.includes(status)) {
+    return res.status(400).json({ message: 'Status inválido' })
+  }
+  if (priority && !VALID_PRIORITY.includes(priority)) {
+    return res.status(400).json({ message: 'Prioridade inválida' })
+  }
+
+  if ((title || description) && !perm?.canEditTicket) {
+    return res.status(403).json({ message: 'Sem permissão para editar tickets' })
+  }
   if (status && !perm?.canChangeStatus) {
     return res.status(403).json({ message: 'Sem permissão para alterar status' })
   }
-
-  // Verifica permissão de alterar prioridade
   if (priority && !perm?.canChangePriority) {
     return res.status(403).json({ message: 'Sem permissão para alterar prioridade' })
   }
@@ -135,25 +148,30 @@ const updateTicket = async (req, res) => {
   })
 
   await cache.del(`ticket:${ticketId}`)
-  await cache.invalidateTickets()
+  await cache.invalidateTickets(existing.userId)
   return res.json(ticket)
 }
 
 const deleteTicket = async (req, res) => {
   const dbUser = await getDbUser(req.user.email)
-  const perm = await getPermission(dbUser.role)
+  if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
 
-  if (!perm?.canDeleteTicket) {
+  const perm = await getPermission(dbUser.role)
+  const ticketId = Number(req.params.id)
+
+  const existing = await prisma.ticket.findUnique({ where: { id: ticketId } })
+  if (!existing) return res.status(404).json({ message: 'Ticket não encontrado' })
+
+  const isOwner = existing.userId === dbUser.id
+  if (!perm?.canDeleteTicket || (!perm?.canViewAllTickets && !isOwner)) {
     return res.status(403).json({ message: 'Sem permissão para deletar tickets' })
   }
-
-  const ticketId = Number(req.params.id)
 
   await prisma.comment.deleteMany({ where: { ticketId } })
   await prisma.ticket.delete({ where: { id: ticketId } })
 
   await cache.del(`ticket:${ticketId}`)
-  await cache.invalidateTickets()
+  await cache.invalidateTickets(existing.userId)
   return res.json({ message: 'Ticket deletado' })
 }
 

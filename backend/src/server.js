@@ -43,20 +43,20 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
+app.use("/api/uploads", protect, express.static(path.join(__dirname, "..", "uploads")));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/settings", settingsRoutes);
 
-app.get('/api/clear-all-cache', async (req, res) => {
+app.get('/api/clear-all-cache', protect, requireRole('SUPERADMIN'), async (req, res) => {
   try {
     const redis = require('./config/redis')
     await redis.flushall()
     res.json({ ok: true, msg: 'Todo o cache limpo' })
   } catch (err) {
-    res.json({ ok: false, err: err.message })
+    res.status(500).json({ ok: false, err: err.message })
   }
 })
 
