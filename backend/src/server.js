@@ -8,7 +8,7 @@ const authRoutes = require("./routes/auth.routes");
 const ticketRoutes = require("./routes/ticket.routes");
 const userRoutes = require("./routes/user.routes");
 const settingsRoutes = require("./routes/settings.routes");
-
+const { protect, requireRole } = require("./middlewares/auth.middleware");
 const app = express();
 
 const allowedOrigins = [
