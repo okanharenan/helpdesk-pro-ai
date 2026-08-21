@@ -13,6 +13,7 @@ const links = [
   },
   { path: "/tickets", label: "Tickets", icon: "ti-ticket", color: "#2563eb" },
   { path: "/users", label: "Usuários", icon: "ti-users", color: "#d97706" },
+  { path: "/chat", label: "Chat", icon: "ti-message-circle", color: "#0891b2" },
   {
     path: "/reports",
     label: "Relatórios",

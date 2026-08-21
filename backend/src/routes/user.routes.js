@@ -1,23 +1,14 @@
 const router = require('express').Router()
-const {
-  createTicket,
-  getTickets,
-  getTicketById,
-  updateTicket,
-  deleteTicket,
-  addComment
-} = require('../controllers/ticket.controller')
-const { protect } = require('../middlewares/auth.middleware')
-const upload = require('../config/upload')
+const { getUsers, createUser, updateUser, deleteUser } = require('../controllers/user.controller')
+const { protect, requireRole } = require('../middlewares/auth.middleware')
 const asyncHandler = require('../helpers/asyncHandler')
 
 router.use(protect)
+router.use(requireRole('SUPERADMIN', 'ADMIN'))
 
-router.get('/', asyncHandler(getTickets))
-router.post('/', upload.single('file'), asyncHandler(createTicket))
-router.get('/:id', asyncHandler(getTicketById))
-router.patch('/:id', asyncHandler(updateTicket))
-router.delete('/:id', asyncHandler(deleteTicket))
-router.post('/:id/comments', asyncHandler(addComment))
+router.get('/', asyncHandler(getUsers))
+router.post('/', asyncHandler(createUser))
+router.patch('/:id', asyncHandler(updateUser))
+router.delete('/:id', asyncHandler(deleteUser))
 
 module.exports = router

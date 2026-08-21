@@ -1,23 +1,19 @@
 const router = require('express').Router()
-const {
-  createTicket,
-  getTickets,
-  getTicketById,
-  updateTicket,
-  deleteTicket,
-  addComment
-} = require('../controllers/ticket.controller')
-const { protect } = require('../middlewares/auth.middleware')
-const upload = require('../config/upload')
+const { getPermissions, updatePermission, getStats } = require('../controllers/settings.controller')
+const { protect, requireRole } = require('../middlewares/auth.middleware')
 const asyncHandler = require('../helpers/asyncHandler')
 
 router.use(protect)
 
-router.get('/', asyncHandler(getTickets))
-router.post('/', upload.single('file'), asyncHandler(createTicket))
-router.get('/:id', asyncHandler(getTicketById))
-router.patch('/:id', asyncHandler(updateTicket))
-router.delete('/:id', asyncHandler(deleteTicket))
-router.post('/:id/comments', asyncHandler(addComment))
+router.use((req, res, next) => {
+  console.log('Settings — role:', req.user?.role, '| email:', req.user?.email)
+  next()
+})
+
+router.use(requireRole('SUPERADMIN'))
+
+router.get('/permissions', asyncHandler(getPermissions))
+router.patch('/permissions/:role', asyncHandler(updatePermission))
+router.get('/stats', asyncHandler(getStats))
 
 module.exports = router

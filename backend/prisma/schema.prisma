@@ -17,6 +17,8 @@ model User {
   provider  String   @default("email")
   tickets   Ticket[]
   comments  Comment[]
+  sentMessages     Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   active Boolean @default(true)
@@ -61,4 +63,18 @@ model Permission {
   canViewUsers         Boolean  @default(false)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+}
+
+model Message {
+  id         Int      @id @default(autoincrement())
+  body       String
+  senderId   Int
+  receiverId Int
+  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([senderId, receiverId])
+  @@index([receiverId, read])
 }

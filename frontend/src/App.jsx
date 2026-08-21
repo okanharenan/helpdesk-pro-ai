@@ -3,6 +3,7 @@ import AppRoutes from "./routes/AppRoutes";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { MeProvider } from "./contexts/MeContext";
+import { SocketProvider } from "./contexts/SocketContext";
 
 function App() {
   useEffect(() => {
@@ -38,7 +39,9 @@ function App() {
     <ThemeProvider>
       <AuthProvider>
         <MeProvider>
-          <AppRoutes />
+          <SocketProvider>
+            <AppRoutes />
+          </SocketProvider>
         </MeProvider>
       </AuthProvider>
     </ThemeProvider>

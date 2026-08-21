@@ -10,6 +10,7 @@ import ForgotPassword from '../pages/ForgotPassword/ForgotPassword'
 import AuthCallback from '../pages/AuthCallback/AuthCallback'
 import ProtectedRoute from '../components/ProtectedRoute/ProtectedRoute'
 import Settings from '../pages/Settings/Settings'
+import Chat from '../pages/Chat/Chat'
 
 export default function AppRoutes() {
   return (
@@ -19,6 +20,7 @@ export default function AppRoutes() {
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/chat" element={<Chat />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/tickets" element={<Tickets />} />
