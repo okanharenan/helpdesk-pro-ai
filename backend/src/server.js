@@ -1,7 +1,5 @@
 require("dotenv").config();
 
-require("dotenv").config();
-
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
@@ -19,15 +17,6 @@ const initSocket = require("./socket");
 const app = express();
 const server = http.createServer(app);
 initSocket(server);
-
-
-const allowedOrigins = [
-  "https://helpdesk-pro-ai.vercel.app",
-  "https://helpdesk-pro-ai-okanharenans-projects.vercel.app",
-  "https://www.helpdesk-pro-ai.com.br",
-  "http://localhost:5173",
-  "http://localhost:5174",
-];
 
 app.use(
   cors({
