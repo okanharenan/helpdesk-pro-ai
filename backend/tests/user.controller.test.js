@@ -1,4 +1,16 @@
 jest.mock("../src/config/prisma", () => require("jest-mock-extended").mockDeep());
+jest.mock("../src/config/supabase", () => ({
+  supabase: {},
+  supabaseAdmin: {
+    auth: {
+      admin: {
+        createUser: jest.fn(),
+        deleteUser: jest.fn(),
+        listUsers: jest.fn(),
+      },
+    },
+  },
+}));
 jest.mock("../src/helpers/cache", () => ({
   get: jest.fn(),
   set: jest.fn(),

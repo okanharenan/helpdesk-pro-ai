@@ -1,6 +1,5 @@
 const { createRemoteJWKSet, jwtVerify } = require("jose");
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+const prisma = require("../config/prisma");
 
 const JWKS = createRemoteJWKSet(
   new URL(`${process.env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`)
