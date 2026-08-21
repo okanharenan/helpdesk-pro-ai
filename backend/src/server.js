@@ -1,15 +1,25 @@
 require("dotenv").config();
 
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const http = require("http");
 
 const authRoutes = require("./routes/auth.routes");
 const ticketRoutes = require("./routes/ticket.routes");
 const userRoutes = require("./routes/user.routes");
 const settingsRoutes = require("./routes/settings.routes");
+const chatRoutes = require("./routes/chat.routes");
 const { protect, requireRole } = require("./middlewares/auth.middleware");
+const { allowedOrigins } = require("./config/corsOrigins");
+const initSocket = require("./socket");
+
 const app = express();
+const server = http.createServer(app);
+initSocket(server);
+
 
 const allowedOrigins = [
   "https://helpdesk-pro-ai.vercel.app",
@@ -49,6 +59,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/chat", chatRoutes);
 
 app.get('/api/clear-all-cache', protect, requireRole('SUPERADMIN'), async (req, res) => {
   try {
@@ -68,4 +79,4 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
+server.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
