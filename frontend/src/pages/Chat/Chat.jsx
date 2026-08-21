@@ -7,14 +7,14 @@ import { useSocket } from "../../contexts/SocketContext";
 import Sidebar from "../../components/Sidebar/Sidebar";
 import Navbar from "../../components/Navbar/Navbar";
 
+
 const API = import.meta.env.VITE_API_URL;
 
 export default function Chat() {
   const navigate = useNavigate();
   const { dark } = useTheme();
   const { me } = useMe();
-  const { socket, onlineUsers } = useSocket();
-
+  const { socket, onlineUsers, refreshUnread } = useSocket();
   const [contacts, setContacts] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [selected, setSelected] = useState(null);

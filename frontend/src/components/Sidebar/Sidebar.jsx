@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useMe } from "../../contexts/MeContext";
+import { useSocket } from "../../contexts/SocketContext";
 
 const links = [
   {
@@ -34,6 +35,7 @@ export default function Sidebar() {
   const { user, logout } = useAuth();
   const { dark, toggle } = useTheme();
   const { me, clearMe } = useMe();
+  const { unreadCount } = useSocket();
   const [hoveredPath, setHoveredPath] = useState(null);
 
   const dbRole = me?.role;
@@ -230,6 +232,23 @@ export default function Sidebar() {
                 />
               </div>
               {label}
+              {path === "/chat" && unreadCount > 0 && (
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    background: "#16a34a",
+                    color: "#fff",
+                    borderRadius: 99,
+                    padding: "1px 6px",
+                    minWidth: 16,
+                    textAlign: "center",
+                  }}
+                >
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
             </button>
           );
         })}
