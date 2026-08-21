@@ -246,67 +246,72 @@ export default function Chat() {
           </div>
 
           {/* Área de conversa */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            {selected ? (
-              <>
-                <div
-                  style={{
-                    padding: "14px 20px",
-                    borderBottom: `1px solid ${border}`,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 9,
-                      background: "linear-gradient(135deg,#16a34a,#22c55e)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#fff",
-                      fontWeight: 700,
-                      fontSize: 12,
-                    }}
-                  >
-                    {initialsOf(selected.name)}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: textColor }}>{selected.name}</div>
-                    <div style={{ fontSize: 11, color: muted }}>
-                      {onlineUsers.has(selected.id) ? "online" : "offline"}
-                    </div>
-                  </div>
-                </div>
+<div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 2 }}>
+  {messages.map((m, i) => {
+    const mine = m.senderId === me?.id;
+    const prev = messages[i - 1];
+    const isFirstOfGroup = !prev || prev.senderId !== m.senderId;
 
-                <div style={{ flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 8 }}>
-                  {messages.map((m) => {
-                    const mine = m.senderId === me?.id;
-                    return (
-                      <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
-                        <div
-                          style={{
-                            maxWidth: "60%",
-                            padding: "8px 12px",
-                            borderRadius: 12,
-                            background: mine ? "#16a34a" : inputBg,
-                            color: mine ? "#fff" : textColor,
-                            fontSize: 13,
-                            border: mine ? "none" : `1px solid ${border}`,
-                          }}
-                        >
-                          {m.body}
-                          <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4 }}>
-                            {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={bottomRef} />
+    return (
+      <div
+        key={m.id}
+        style={{
+          display: "flex",
+          justifyContent: mine ? "flex-end" : "flex-start",
+          alignItems: "flex-end",
+          gap: 8,
+          marginTop: isFirstOfGroup ? 14 : 2,
+        }}
+      >
+        {!mine && (
+          <div
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 7,
+              background: isFirstOfGroup ? "linear-gradient(135deg,#6b7280,#9ca3af)" : "transparent",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#fff",
+              fontSize: 10,
+              fontWeight: 700,
+              flexShrink: 0,
+            }}
+          >
+            {isFirstOfGroup
+              ? (m.sender?.name || selected.name).split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()
+              : ""}
+          </div>
+        )}
+        <div
+          style={{
+            maxWidth: "60%",
+            padding: "8px 12px",
+            fontSize: 13,
+            color: mine ? "#fff" : textColor,
+            background: mine ? "#16a34a" : inputBg,
+            border: mine ? "none" : `1px solid ${border}`,
+            borderRadius: mine ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+          }}
+        >
+          {m.body}
+          <div
+            style={{
+              fontSize: 10,
+              marginTop: 4,
+              textAlign: "right",
+              color: mine ? "rgba(255,255,255,0.75)" : muted,
+            }}
+          >
+            {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </div>
+        </div>
+      </div>
+    );
+  })}
+  <div ref={bottomRef} />
+</div>
                 </div>
 
                 <div style={{ padding: 16, borderTop: `1px solid ${border}`, display: "flex", gap: 10 }}>
