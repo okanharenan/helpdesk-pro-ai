@@ -1226,9 +1226,9 @@ export default function Tickets() {
                       transition: "all 0.15s",
                     }}
                     onMouseEnter={(e) =>
-                    (e.currentTarget.style.background = dark
-                      ? "#1f1f1f"
-                      : "#f3f4f6")
+                      (e.currentTarget.style.background = dark
+                        ? "#1f1f1f"
+                        : "#f3f4f6")
                     }
                     onMouseLeave={(e) =>
                       (e.currentTarget.style.background = t.inputBg)
