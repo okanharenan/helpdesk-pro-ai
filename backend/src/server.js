@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const http = require("http");
+const helmet = require("helmet");
 
 const authRoutes = require("./routes/auth.routes");
 const ticketRoutes = require("./routes/ticket.routes");
@@ -33,6 +34,7 @@ app.use(
 );
 
 app.use(express.json());
+app.use(helmet());
 
 app.use((req, res, next) => {
   const start = Date.now();
