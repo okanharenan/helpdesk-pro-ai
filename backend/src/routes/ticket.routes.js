@@ -5,7 +5,8 @@ const {
   getTicketById,
   updateTicket,
   deleteTicket,
-  addComment
+  addComment,
+  getTicketCounts
 } = require('../controllers/ticket.controller')
 const { protect } = require('../middlewares/auth.middleware')
 const upload = require('../config/upload')
@@ -16,6 +17,7 @@ const { createTicketSchema, updateTicketSchema, addCommentSchema } = require('..
 router.use(protect)
 
 router.get('/', asyncHandler(getTickets))
+router.get('/counts', asyncHandler(getTicketCounts))
 router.post('/', upload.single('file'), validate(createTicketSchema), asyncHandler(createTicket))
 router.get('/:id', asyncHandler(getTicketById))
 router.patch('/:id', validate(updateTicketSchema), asyncHandler(updateTicket))

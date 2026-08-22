@@ -146,6 +146,16 @@ export default function Tickets() {
         : new Date(a.createdAt) - new Date(b.createdAt),
     );
 
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter, search, sort]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const paginated = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   const counts = {
     ALL: tickets.length,
     OPEN: tickets.filter((t) => t.status === "OPEN").length,
@@ -600,7 +610,7 @@ export default function Tickets() {
                 <span></span>
               </div>
 
-              {sorted.map((tk, i) => {
+              {paginated.map((tk, i) => {
                 const st = STATUS[tk.status];
                 const pr = PRIORITY[tk.priority];
                 return (
@@ -783,16 +793,56 @@ export default function Tickets() {
                   borderRadius: "0 0 14px 14px",
                 }}
               >
-                <span>
-                  {sorted.length} ticket{sorted.length !== 1 ? "s" : ""}{" "}
-                  {filter !== "ALL"
-                    ? `com status "${FILTERS.find((f) => f.key === filter)?.label}"`
-                    : "no total"}
-                </span>
-                {search && (
-                  <span style={{ color: "#16a34a" }}>
-                    Filtrando por "{search}"
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <span>
+                    {sorted.length} ticket{sorted.length !== 1 ? "s" : ""}{" "}
+                    {filter !== "ALL"
+                      ? `com status "${FILTERS.find((f) => f.key === filter)?.label}"`
+                      : "no total"}
                   </span>
+                  {search && (
+                    <span style={{ color: "#16a34a" }}>
+                      Filtrando por "{search}"
+                    </span>
+                  )}
+                </div>
+
+                {totalPages > 1 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        border: `1px solid ${t.border}`,
+                        background: "transparent",
+                        color: page === 1 ? t.textMuted : t.textPrimary,
+                        cursor: page === 1 ? "default" : "pointer",
+                        fontSize: 12,
+                      }}
+                    >
+                      Anterior
+                    </button>
+                    <span style={{ fontSize: 12, color: t.textMuted }}>
+                      Página {page} de {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        border: `1px solid ${t.border}`,
+                        background: "transparent",
+                        color: page === totalPages ? t.textMuted : t.textPrimary,
+                        cursor: page === totalPages ? "default" : "pointer",
+                        fontSize: 12,
+                      }}
+                    >
+                      Próxima
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1176,9 +1226,9 @@ export default function Tickets() {
                       transition: "all 0.15s",
                     }}
                     onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = dark
-                        ? "#1f1f1f"
-                        : "#f3f4f6")
+                    (e.currentTarget.style.background = dark
+                      ? "#1f1f1f"
+                      : "#f3f4f6")
                     }
                     onMouseLeave={(e) =>
                       (e.currentTarget.style.background = t.inputBg)

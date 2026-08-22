@@ -36,31 +36,97 @@ const createTicket = async (req, res) => {
 
 const getTickets = async (req, res) => {
   const dbUser = await getDbUser(req.user.email)
-  const perm = await getPermission(dbUser.role)
+  if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
 
+  const perm = await getPermission(dbUser.role)
   const canViewAll = perm?.canViewAllTickets
   const cacheKey = canViewAll ? 'tickets:all' : `tickets:user:${dbUser.id}`
 
-  const cached = await cache.get(cacheKey)
-  if (cached) {
-    console.log(`Cache HIT: ${cacheKey}`)
-    return res.json(typeof cached === 'string' ? JSON.parse(cached) : cached)
+  const usePagination = req.query.page !== undefined
+
+  // Sem `page` na query: comportamento 100% igual ao que já existia (usado por
+  // Dashboard, Navbar e Relatórios) — inclusive o cache continua funcionando igual.
+  if (!usePagination) {
+    const cached = await cache.get(cacheKey)
+    if (cached) {
+      console.log(`Cache HIT: ${cacheKey}`)
+      return res.json(typeof cached === 'string' ? JSON.parse(cached) : cached)
+    }
+
+    console.log(`Cache MISS: ${cacheKey}`)
+    const where = canViewAll ? {} : { userId: dbUser.id }
+
+    const tickets = await prisma.ticket.findMany({
+      where,
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        _count: { select: { comments: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    })
+
+    await cache.set(cacheKey, tickets, cache.TTL.tickets)
+    return res.json(tickets)
   }
 
-  console.log(`Cache MISS: ${cacheKey}`)
-  const where = canViewAll ? {} : { userId: dbUser.id }
+  // Com `page` na query: modo paginado, usado pela tela de Tickets.
+  const page = Math.max(1, parseInt(req.query.page) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize) || 20))
+  const status = req.query.status && req.query.status !== 'ALL' ? req.query.status : undefined
+  const search = req.query.search?.trim()
+  const sort = req.query.sort === 'oldest' ? 'asc' : 'desc'
 
-  const tickets = await prisma.ticket.findMany({
-    where,
-    include: {
-      user: { select: { id: true, name: true, email: true } },
-      _count: { select: { comments: true } }
-    },
-    orderBy: { createdAt: 'desc' }
+  const where = {
+    ...(canViewAll ? {} : { userId: dbUser.id }),
+    ...(status && { status }),
+    ...(search && {
+      OR: [
+        { title: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ],
+    }),
+  }
+
+  const [tickets, total] = await Promise.all([
+    prisma.ticket.findMany({
+      where,
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        _count: { select: { comments: true } },
+      },
+      orderBy: { createdAt: sort },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.ticket.count({ where }),
+  ])
+
+  return res.json({
+    tickets,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
   })
+}
 
-  await cache.set(cacheKey, tickets, cache.TTL.tickets)
-  return res.json(tickets)
+const getTicketCounts = async (req, res) => {
+  const dbUser = await getDbUser(req.user.email)
+  if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
+
+  const perm = await getPermission(dbUser.role)
+  const canViewAll = perm?.canViewAllTickets
+  const baseWhere = canViewAll ? {} : { userId: dbUser.id }
+
+  const [all, open, doing, resolved, closed] = await Promise.all([
+    prisma.ticket.count({ where: baseWhere }),
+    prisma.ticket.count({ where: { ...baseWhere, status: 'OPEN' } }),
+    prisma.ticket.count({ where: { ...baseWhere, status: 'DOING' } }),
+    prisma.ticket.count({ where: { ...baseWhere, status: 'RESOLVED' } }),
+    prisma.ticket.count({ where: { ...baseWhere, status: 'CLOSED' } }),
+  ])
+
+  return res.json({ ALL: all, OPEN: open, DOING: doing, RESOLVED: resolved, CLOSED: closed })
 }
 
 const getTicketById = async (req, res) => {
@@ -198,4 +264,4 @@ const addComment = async (req, res) => {
   return res.status(201).json(comment)
 }
 
-module.exports = { createTicket, getTickets, getTicketById, updateTicket, deleteTicket, addComment }
+module.exports = { createTicket, getTickets, getTicketById, updateTicket, deleteTicket, addComment, getTicketCounts }
