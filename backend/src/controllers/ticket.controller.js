@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma')
 const cache = require('../helpers/cache')
+const { sendStatusChangeEmail } = require('../helpers/email')
 
 const getDbUser = (email) => prisma.user.findUnique({ where: { email } })
 
@@ -215,6 +216,18 @@ const updateTicket = async (req, res) => {
 
   await cache.del(`ticket:${ticketId}`)
   await cache.invalidateTickets(existing.userId)
+
+  if (status && existing.status !== status) {
+    sendStatusChangeEmail({
+      to: ticket.user.email,
+      name: ticket.user.name,
+      ticketId: ticket.id,
+      ticketTitle: ticket.title,
+      oldStatus: existing.status,
+      newStatus: status,
+    })
+  }
+
   return res.json(ticket)
 }
 
