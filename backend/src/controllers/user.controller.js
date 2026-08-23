@@ -135,6 +135,15 @@ const deleteUser = async (req, res) => {
       .json({ message: "Não é possível deletar o SUPERADMIN" });
   }
 
+  const ticketCount = await prisma.ticket.count({
+    where: { userId: target.id },
+  });
+  if (ticketCount > 0) {
+    return res.status(409).json({
+      message: `Este usuário tem ${ticketCount} chamado${ticketCount > 1 ? "s" : ""} no histórico e não pode ser excluído. Desative o usuário em vez de excluí-lo, para preservar o histórico dos chamados.`,
+    });
+  }
+
   const { data: supaUsers } = await supabaseAdmin.auth.admin.listUsers();
   const supaTarget = supaUsers.users.find((u) => u.email === target.email);
   if (supaTarget) await supabaseAdmin.auth.admin.deleteUser(supaTarget.id);
