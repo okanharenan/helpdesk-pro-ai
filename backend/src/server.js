@@ -1,3 +1,6 @@
+const { initSentry, Sentry } = require("./config/sentry");
+initSentry();
+
 require("dotenv").config();
 
 const express = require("express");
@@ -5,7 +8,10 @@ const cors = require("cors");
 const path = require("path");
 const http = require("http");
 const helmet = require("helmet");
+const pinoHttp = require("pino-http");
 
+const logger = require("./config/logger");
+const prisma = require("./config/prisma");
 const authRoutes = require("./routes/auth.routes");
 const ticketRoutes = require("./routes/ticket.routes");
 const userRoutes = require("./routes/user.routes");
@@ -19,13 +25,15 @@ const app = express();
 const server = http.createServer(app);
 initSocket(server);
 
+app.use(helmet());
+
 app.use(
   cors({
     origin: function (origin, callback) {
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        console.log("CORS bloqueado para origem:", origin);
+        logger.warn({ origin }, "CORS bloqueado");
         callback(new Error("Not allowed by CORS"));
       }
     },
@@ -34,14 +42,26 @@ app.use(
 );
 
 app.use(express.json());
-app.use(helmet());
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on("finish", () => {
-    console.log(`${req.method} ${req.path} — ${Date.now() - start}ms`);
-  });
-  next();
+app.use(pinoHttp({ logger }));
+
+app.get("/api/health", async (req, res) => {
+  const health = {
+    status: "ok",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    health.database = "ok";
+  } catch (err) {
+    health.database = "error";
+    health.status = "degraded";
+    logger.error({ err }, "Health check: falha ao conectar no banco");
+  }
+
+  res.status(health.status === "ok" ? 200 : 503).json(health);
 });
 
 app.use("/api/uploads", protect, express.static(path.join(__dirname, "..", "uploads")));
@@ -63,11 +83,20 @@ app.get('/api/clear-all-cache', protect, requireRole('SUPERADMIN'), async (req, 
 })
 
 app.use((err, req, res, next) => {
-  console.error(err);
-  res
-    .status(err.status || 500)
-    .json({ message: err.message || "Erro interno" });
+  Sentry.captureException(err);
+  logger.error({ err }, "Erro não tratado na requisição");
+  res.status(err.status || 500).json({ message: err.message || "Erro interno" });
+});
+
+process.on("unhandledRejection", (reason) => {
+  Sentry.captureException(reason);
+  logger.error({ reason }, "unhandledRejection");
+});
+
+process.on("uncaughtException", (err) => {
+  Sentry.captureException(err);
+  logger.error({ err }, "uncaughtException");
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
+server.listen(PORT, () => logger.info(`Servidor rodando na porta ${PORT}`));
