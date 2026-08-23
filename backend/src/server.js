@@ -11,7 +11,7 @@ const http = require("http");
 const helmet = require("helmet");
 const pinoHttp = require("pino-http");
 
-const logger = require("./config/logger");
+
 const prisma = require("./config/prisma");
 const authRoutes = require("./routes/auth.routes");
 const ticketRoutes = require("./routes/ticket.routes");
