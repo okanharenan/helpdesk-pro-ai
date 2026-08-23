@@ -144,6 +144,13 @@ const deleteUser = async (req, res) => {
     });
   }
 
+  // Mensagens de chat não têm valor de auditoria como os tickets — podem ser removidas junto
+  await prisma.message.deleteMany({
+    where: {
+      OR: [{ senderId: target.id }, { receiverId: target.id }],
+    },
+  });
+
   const { data: supaUsers } = await supabaseAdmin.auth.admin.listUsers();
   const supaTarget = supaUsers.users.find((u) => u.email === target.email);
   if (supaTarget) await supabaseAdmin.auth.admin.deleteUser(supaTarget.id);
