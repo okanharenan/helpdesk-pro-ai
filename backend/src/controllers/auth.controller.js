@@ -1,6 +1,7 @@
 const { supabase } = require('../config/supabase')
 const prisma = require('../config/prisma')
 const cache = require('../helpers/cache')
+const { getPermission } = require('../helpers/permissions')
 
 const generateToken = (id) => {
   const jwt = require('jsonwebtoken')
@@ -82,28 +83,26 @@ const getMe = async (req, res) => {
   const email = req.user.email
   const cacheKey = `me:${email}`
 
-  // Tenta pegar do cache
+  let dbUser
   const cached = await cache.get(cacheKey)
   if (cached) {
     console.log(`Cache HIT: ${cacheKey}`)
-    return res.json(typeof cached === 'string' ? JSON.parse(cached) : cached)
+    dbUser = typeof cached === 'string' ? JSON.parse(cached) : cached
+  } else {
+    console.log(`Cache MISS: ${cacheKey}`)
+    dbUser = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, name: true, email: true, role: true, provider: true }
+    })
+    if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
+    await cache.set(cacheKey, dbUser, 60 * 5)
   }
 
-  console.log(`Cache MISS: ${cacheKey}`)
 
-  // Busca só no banco — sem chamar Supabase
-  const dbUser = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, name: true, email: true, role: true, provider: true }
-  })
+  const permissions = await getPermission(dbUser.role)
 
-  if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
-
-  const userPayload = { ...req.user, ...dbUser }
-
-  await cache.set(cacheKey, userPayload, 60 * 5)
+  const userPayload = { ...req.user, ...dbUser, permissions }
 
   return res.json(userPayload)
 }
-
 module.exports = { register, login, forgotPassword, googleAuthUrl, facebookAuthUrl, getMe }

@@ -100,8 +100,9 @@ export default function TicketDetails() {
   const token = localStorage.getItem("helpdesk_token");
   const headers = { Authorization: `Bearer ${token}` };
   const dbRole = me?.role;
-  const canEdit = ["SUPERADMIN", "ADMIN"].includes(dbRole);
-  const canDelete = dbRole === "SUPERADMIN";
+  const perm = me?.permissions;
+  const canEdit = !!(perm?.canChangeStatus || perm?.canChangePriority);
+  const canDelete = !!perm?.canDeleteTicket;
 
   useEffect(() => {
     axios
@@ -133,7 +134,7 @@ export default function TicketDetails() {
         { headers },
       );
       setTicket((p) => ({ ...p, priority: data.priority }));
-    } catch {}
+    } catch { }
   };
 
   const handleDelete = async () => {
