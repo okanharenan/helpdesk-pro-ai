@@ -10,6 +10,7 @@ function initSentry() {
     dsn: process.env.SENTRY_DSN,
     environment: process.env.NODE_ENV || "development",
     tracesSampleRate: 0.1,
+    integrations: (integrations) => integrations.filter((i) => i.name !== "Pino"),
   });
 
   console.log("[sentry] Monitoramento de erros ativado");
