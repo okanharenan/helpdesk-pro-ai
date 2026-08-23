@@ -1,17 +1,24 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import axios from 'axios'
+import { useAuth } from './AuthContext'
 
 const MeContext = createContext(null)
 const API = import.meta.env.VITE_API_URL
 
 export function MeProvider({ children }) {
+  const { user } = useAuth()
   const [me, setMe] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const token = localStorage.getItem('helpdesk_token')
-    if (!token) { setLoading(false); return }
+    if (!token) {
+      setMe(null)
+      setLoading(false)
+      return
+    }
 
+    setLoading(true)
     axios.get(`${API}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => {
         setMe(res.data)
@@ -24,7 +31,7 @@ export function MeProvider({ children }) {
         }
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [user])
 
   const clearMe = () => { sessionStorage.removeItem('helpdesk_me'); setMe(null) }
 
