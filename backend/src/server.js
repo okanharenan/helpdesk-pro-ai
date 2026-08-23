@@ -1,7 +1,8 @@
+require("dotenv").config();
+
+const logger = require("./config/logger");
 const { initSentry, Sentry } = require("./config/sentry");
 initSentry();
-
-require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
