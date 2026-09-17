@@ -46,6 +46,10 @@ app.use(express.json());
 
 app.use(pinoHttp({ logger }));
 
+app.get("/", (req, res) => {
+  res.status(200).json({ service: "helpdesk-pro-ai backend", status: "ok" });
+});
+
 app.get("/api/health", async (req, res) => {
   const health = {
     status: "ok",

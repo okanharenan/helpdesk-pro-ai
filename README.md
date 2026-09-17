@@ -59,7 +59,8 @@ npm run dev
 | `SUPABASE_ANON_KEY` | Chave pública do Supabase |
 | `SUPABASE_SERVICE_KEY` | Chave de service role (sensível — nunca commitar) |
 | `DATABASE_URL` / `DIRECT_URL` | Conexão com o Postgres |
-| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Conexão com o Redis |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Conexão com o Redis (cache, via REST) |
+| `REDIS_URL` (opcional) | Conexão TCP com o Redis, usada pelo adapter do Socket.IO para sincronizar mensagens/presença entre múltiplas instâncias |
 
 ### frontend/.env
 | Variável | Descrição |
