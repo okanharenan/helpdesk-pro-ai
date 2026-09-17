@@ -59,13 +59,26 @@ npm run dev
 | `SUPABASE_ANON_KEY` | Chave pública do Supabase |
 | `SUPABASE_SERVICE_KEY` | Chave de service role (sensível — nunca commitar) |
 | `DATABASE_URL` / `DIRECT_URL` | Conexão com o Postgres |
-| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Conexão com o Redis |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Conexão com o Redis (cache, via REST) |
+| `REDIS_URL` (opcional) | Conexão TCP com o Redis, usada pelo adapter do Socket.IO para sincronizar mensagens/presença entre múltiplas instâncias |
 
 ### frontend/.env
 | Variável | Descrição |
 |---|---|
 | `VITE_API_URL` | URL da API do backend |
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Autenticação no cliente |
+
+## Documentação da API
+
+[#documentação-da-api](#documentação-da-api)
+
+Com o backend rodando, a documentação interativa (Swagger UI) fica disponível em:
+
+```
+http://localhost:3000/api/docs
+```
+
+Em produção: `https://helpdesk-pro-ai.onrender.com/api/docs`
 
 ## Testes
 

@@ -10,6 +10,8 @@ const path = require("path");
 const http = require("http");
 const helmet = require("helmet");
 const pinoHttp = require("pino-http");
+const swaggerUi = require("swagger-ui-express");
+const swaggerSpec = require("./config/swagger");
 
 
 const prisma = require("./config/prisma");
@@ -46,6 +48,10 @@ app.use(express.json());
 
 app.use(pinoHttp({ logger }));
 
+app.get("/", (req, res) => {
+  res.status(200).json({ service: "helpdesk-pro-ai backend", status: "ok" });
+});
+
 app.get("/api/health", async (req, res) => {
   const health = {
     status: "ok",
@@ -64,6 +70,13 @@ app.get("/api/health", async (req, res) => {
 
   res.status(health.status === "ok" ? 200 : 503).json(health);
 });
+
+app.use(
+  "/api/docs",
+  helmet({ contentSecurityPolicy: false }),
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, { customSiteTitle: "HelpDesk Pro API Docs" }),
+);
 
 app.use("/api/uploads", protect, express.static(path.join(__dirname, "..", "uploads")));
 
