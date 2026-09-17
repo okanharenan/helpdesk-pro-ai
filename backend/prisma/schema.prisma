@@ -36,6 +36,11 @@ model Ticket {
   comments    Comment[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  // Campos preenchidos automaticamente pela IA ao criar o chamado (podem ficar
+  // null se a chamada à IA falhar ou a feature estiver desabilitada).
+  aiCategory          String?
+  aiSuggestedPriority String?
+  aiSummary           String?
 }
 
 model Comment {

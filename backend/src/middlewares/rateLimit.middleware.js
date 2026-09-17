@@ -24,4 +24,12 @@ const forgotPasswordLimiter = rateLimit({
   message: { message: "Muitas solicitações. Tente novamente em alguns minutos." },
 });
 
-module.exports = { loginLimiter, registerLimiter, forgotPasswordLimiter };
+const aiLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutos
+  max: 15, // cada chamada custa uma requisição à API da Anthropic
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Muitas solicitações de IA. Tente novamente em alguns minutos." },
+});
+
+module.exports = { loginLimiter, registerLimiter, forgotPasswordLimiter, aiLimiter };

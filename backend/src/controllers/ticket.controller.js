@@ -1,6 +1,8 @@
 const prisma = require('../config/prisma')
 const cache = require('../helpers/cache')
 const { sendStatusChangeEmail } = require('../helpers/email')
+const { classifyTicket, suggestReply: aiSuggestReply, aiEnabled } = require('../helpers/ai')
+const logger = require('../config/logger')
 
 const getDbUser = (email) => prisma.user.findUnique({ where: { email } })
 
@@ -32,6 +34,27 @@ const createTicket = async (req, res) => {
   })
 
   await cache.invalidateTickets(dbUser.id)
+
+  // Classificação de IA roda em background: não atrasa a resposta ao usuário
+  // e nunca falha a criação do ticket caso a IA esteja indisponível.
+  if (aiEnabled()) {
+    classifyTicket({ title, description })
+      .then(async (result) => {
+        if (!result) return
+        await prisma.ticket.update({
+          where: { id: ticket.id },
+          data: {
+            aiCategory: result.category || null,
+            aiSuggestedPriority: result.suggestedPriority || null,
+            aiSummary: result.summary || null,
+          },
+        })
+        await cache.del(`ticket:${ticket.id}`)
+        await cache.invalidateTickets(dbUser.id)
+      })
+      .catch((err) => logger.warn({ err: err.message }, '[ai] erro ao salvar classificação do ticket'))
+  }
+
   return res.status(201).json(ticket)
 }
 
@@ -277,4 +300,39 @@ const addComment = async (req, res) => {
   return res.status(201).json(comment)
 }
 
-module.exports = { createTicket, getTickets, getTicketById, updateTicket, deleteTicket, addComment, getTicketCounts }
+const suggestReplyForTicket = async (req, res) => {
+  const dbUser = await getDbUser(req.user.email)
+  if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
+
+  // Feature voltada para quem atende o chamado, não para o solicitante.
+  if (dbUser.role === 'CLIENT') {
+    return res.status(403).json({ message: 'Sem permissão para usar a sugestão de resposta' })
+  }
+
+  const ticketId = Number(req.params.id)
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    include: {
+      comments: {
+        include: { user: { select: { role: true } } },
+        orderBy: { createdAt: 'asc' },
+        take: 20,
+      },
+    },
+  })
+  if (!ticket) return res.status(404).json({ message: 'Ticket não encontrado' })
+
+  if (!aiEnabled()) {
+    return res.status(503).json({ message: 'Recurso de IA não configurado neste ambiente' })
+  }
+
+  try {
+    const suggestion = await aiSuggestReply({ ticket, comments: ticket.comments })
+    return res.json({ suggestion })
+  } catch (err) {
+    logger.error({ err: err.message }, '[ai] erro ao gerar sugestão de resposta')
+    return res.status(502).json({ message: 'Não foi possível gerar a sugestão agora, tente novamente' })
+  }
+}
+
+module.exports = { createTicket, getTickets, getTicketById, updateTicket, deleteTicket, addComment, getTicketCounts, suggestReplyForTicket }

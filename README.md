@@ -13,6 +13,8 @@ Sistema de gestão de chamados de suporte interno, com controle de acesso por pe
 - Relatórios por período
 - Anexos em chamados
 - Tema claro/escuro
+- Classificação automática de chamados por IA (categoria, prioridade sugerida e resumo) ao abrir um ticket
+- Sugestão de resposta por IA para agentes, revisável antes de enviar
 
 <!-- Adicione aqui 2-3 prints reais: dashboard, tela de tickets, chat -->
 
@@ -61,6 +63,7 @@ npm run dev
 | `DATABASE_URL` / `DIRECT_URL` | Conexão com o Postgres |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Conexão com o Redis (cache, via REST) |
 | `REDIS_URL` (opcional) | Conexão TCP com o Redis, usada pelo adapter do Socket.IO para sincronizar mensagens/presença entre múltiplas instâncias |
+| `ANTHROPIC_API_KEY` (opcional) | Habilita a classificação automática de chamados e a sugestão de resposta por IA (Claude). Sem ela, essas features ficam desativadas e o resto do sistema funciona normalmente |
 
 ### frontend/.env
 | Variável | Descrição |
