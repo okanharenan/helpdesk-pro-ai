@@ -6,13 +6,15 @@ const {
   updateTicket,
   deleteTicket,
   addComment,
-  getTicketCounts
+  getTicketCounts,
+  suggestReplyForTicket
 } = require('../controllers/ticket.controller')
 const { protect } = require('../middlewares/auth.middleware')
 const upload = require('../config/upload')
 const asyncHandler = require('../helpers/asyncHandler')
 const { validate } = require('../middlewares/validate.middleware')
 const { createTicketSchema, updateTicketSchema, addCommentSchema } = require('../schemas/ticket.schema')
+const { aiLimiter } = require('../middlewares/rateLimit.middleware')
 
 router.use(protect)
 
@@ -180,5 +182,35 @@ router.delete('/:id', asyncHandler(deleteTicket))
  *       404: { description: Chamado não encontrado }
  */
 router.post('/:id/comments', validate(addCommentSchema), asyncHandler(addComment))
+
+/**
+ * @openapi
+ * /tickets/{id}/ai/suggest-reply:
+ *   post:
+ *     tags: [Tickets]
+ *     summary: Gera uma sugestão de resposta com IA para o agente revisar antes de enviar
+ *     description: |
+ *       Não disponível para o perfil CLIENT. Requer `ANTHROPIC_API_KEY` configurada no
+ *       backend — sem isso, retorna 503. Sujeito a rate limit dedicado (15 req / 10 min).
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Sugestão gerada
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 suggestion: { type: string }
+ *       403: { description: Perfil CLIENT não pode usar essa feature }
+ *       404: { description: Chamado não encontrado }
+ *       429: { description: Rate limit de IA excedido }
+ *       503: { description: IA não configurada neste ambiente }
+ */
+router.post('/:id/ai/suggest-reply', aiLimiter, asyncHandler(suggestReplyForTicket))
 
 module.exports = router

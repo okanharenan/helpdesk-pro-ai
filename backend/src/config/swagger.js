@@ -59,6 +59,23 @@ const definition = {
           },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
+          aiCategory: {
+            type: "string",
+            nullable: true,
+            enum: ["HARDWARE", "SOFTWARE", "REDE", "ACESSO_CONTA", "FINANCEIRO", "OUTRO"],
+            description: "Categoria sugerida automaticamente pela IA ao criar o chamado",
+          },
+          aiSuggestedPriority: {
+            type: "string",
+            nullable: true,
+            enum: ["LOW", "MEDIUM", "HIGH"],
+            description: "Prioridade sugerida pela IA (não substitui a prioridade escolhida pelo usuário)",
+          },
+          aiSummary: {
+            type: "string",
+            nullable: true,
+            description: "Resumo curto gerado pela IA para triagem rápida",
+          },
         },
       },
       TicketComment: {

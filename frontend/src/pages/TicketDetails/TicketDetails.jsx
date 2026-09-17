@@ -96,6 +96,8 @@ export default function TicketDetails() {
   const [sending, setSending] = useState(false);
   const [updating, setUpdating] = useState(null);
   const [commentFocused, setCommentFocused] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   const token = localStorage.getItem("helpdesk_token");
   const headers = { Authorization: `Bearer ${token}` };
@@ -157,6 +159,30 @@ export default function TicketDetails() {
       setComment("");
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleAiSuggest = async () => {
+    setAiLoading(true);
+    setAiError("");
+    try {
+      const { data } = await axios.post(
+        `${API}/tickets/${id}/ai/suggest-reply`,
+        {},
+        { headers },
+      );
+      setComment(data.suggestion || "");
+    } catch (err) {
+      const status = err?.response?.status;
+      setAiError(
+        status === 503
+          ? "Sugestão de IA não está configurada neste ambiente."
+          : status === 429
+            ? "Muitas sugestões pedidas, tente de novo em alguns minutos."
+            : "Não foi possível gerar uma sugestão agora.",
+      );
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -486,6 +512,60 @@ export default function TicketDetails() {
                 >
                   {ticket.description}
                 </p>
+
+                {(ticket.aiSummary || ticket.aiCategory) && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      marginTop: 14,
+                      padding: "12px 14px",
+                      background: dark ? "rgba(124,58,237,0.08)" : "#f5f3ff",
+                      border: `1px solid ${dark ? "rgba(124,58,237,0.25)" : "#ddd6fe"}`,
+                      borderRadius: 10,
+                    }}
+                  >
+                    <i
+                      className="ti ti-sparkles"
+                      style={{ fontSize: 16, color: "#7c3aed", marginTop: 2, flexShrink: 0 }}
+                      aria-hidden="true"
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          marginBottom: ticket.aiSummary ? 4 : 0,
+                        }}
+                      >
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>
+                          Análise da IA
+                        </span>
+                        {ticket.aiCategory && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              padding: "2px 8px",
+                              borderRadius: 99,
+                              background: dark ? "rgba(124,58,237,0.15)" : "#ede9fe",
+                              color: "#7c3aed",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {ticket.aiCategory}
+                          </span>
+                        )}
+                      </div>
+                      {ticket.aiSummary && (
+                        <p style={{ fontSize: 12, color: t.textSecondary, margin: 0, lineHeight: 1.6 }}>
+                          {ticket.aiSummary}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {ticket.fileUrl && (
                   <button
@@ -986,6 +1066,41 @@ export default function TicketDetails() {
                   onSubmit={handleComment}
                   style={{ borderTop: `1px solid ${t.border}`, paddingTop: 14 }}
                 >
+                  {dbRole !== "CLIENT" && (
+                    <div style={{ marginBottom: 10 }}>
+                      <button
+                        type="button"
+                        onClick={handleAiSuggest}
+                        disabled={aiLoading}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 7,
+                          padding: "7px 14px",
+                          background: dark ? "rgba(124,58,237,0.1)" : "#f5f3ff",
+                          border: `1px solid ${dark ? "rgba(124,58,237,0.3)" : "#ddd6fe"}`,
+                          borderRadius: 9,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "#7c3aed",
+                          cursor: aiLoading ? "not-allowed" : "pointer",
+                          opacity: aiLoading ? 0.6 : 1,
+                        }}
+                      >
+                        <i
+                          className={`ti ${aiLoading ? "ti-loader-2 anim-spin" : "ti-sparkles"}`}
+                          style={{ fontSize: 14 }}
+                          aria-hidden="true"
+                        />
+                        {aiLoading ? "Gerando sugestão..." : "Sugerir resposta com IA"}
+                      </button>
+                      {aiError && (
+                        <div style={{ fontSize: 11, color: "#dc2626", marginTop: 6 }}>
+                          {aiError}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div style={{ position: "relative" }}>
                     <textarea
                       value={comment}
