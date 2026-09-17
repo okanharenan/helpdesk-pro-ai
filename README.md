@@ -68,6 +68,18 @@ npm run dev
 | `VITE_API_URL` | URL da API do backend |
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Autenticação no cliente |
 
+## Documentação da API
+
+[#documentação-da-api](#documentação-da-api)
+
+Com o backend rodando, a documentação interativa (Swagger UI) fica disponível em:
+
+```
+http://localhost:3000/api/docs
+```
+
+Em produção: `https://helpdesk-pro-ai.onrender.com/api/docs`
+
 ## Testes
 
 \`\`\`bash
