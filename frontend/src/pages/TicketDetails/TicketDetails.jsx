@@ -96,6 +96,8 @@ export default function TicketDetails() {
   const [sending, setSending] = useState(false);
   const [updating, setUpdating] = useState(null);
   const [commentFocused, setCommentFocused] = useState(false);
+  const [openingAttachment, setOpeningAttachment] = useState(false);
+  const [attachmentError, setAttachmentError] = useState("");
 
   const token = localStorage.getItem("helpdesk_token");
   const headers = { Authorization: `Bearer ${token}` };
@@ -103,6 +105,27 @@ export default function TicketDetails() {
   const perm = me?.permissions;
   const canEdit = !!(perm?.canChangeStatus || perm?.canChangePriority);
   const canDelete = !!perm?.canDeleteTicket;
+
+  const openAttachment = async () => {
+    setAttachmentError("");
+    setOpeningAttachment(true);
+    // Abre a aba já no clique (senão o navegador bloqueia como pop-up) e preenche depois
+    const win = window.open("", "_blank");
+    try {
+      const { data } = await axios.get(`${API}/tickets/${ticket.id}/attachment`, { headers });
+      if (win) {
+        win.opener = null;
+        win.location.href = data.url;
+      }
+    } catch (err) {
+      if (win) win.close();
+      setAttachmentError(
+        err.response?.data?.message || "Não foi possível abrir o anexo."
+      );
+    } finally {
+      setOpeningAttachment(false);
+    }
+  };
 
   useEffect(() => {
     axios
@@ -488,38 +511,36 @@ export default function TicketDetails() {
                 </p>
 
                 {ticket.fileUrl && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        const token = localStorage.getItem("helpdesk_token");
-                        const url = ticket.fileUrl?.startsWith("http")
-                          ? ticket.fileUrl
-                          : `${import.meta.env.VITE_API_URL || ""}${ticket.fileUrl}`;
-                        const res = await axios.get(url, {
-                          headers: { Authorization: `Bearer ${token}` },
-                          responseType: "blob",
-                        });
-                        const blobUrl = window.URL.createObjectURL(res.data);
-                        const link = document.createElement("a");
-                        link.href = blobUrl;
-                        link.download = ticket.fileUrl.split("/").pop();
-                        document.body.appendChild(link);
-                        link.click();
-                        link.remove();
-                        window.URL.revokeObjectURL(blobUrl);
-                      } catch (err) {
-                        console.error("Erro ao baixar anexo:", err);
-                      }
-                    }}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: 0,
-                    }}
-                  >
-                    {/* mantenha aqui dentro o mesmo conteúdo/ícone/texto que estava dentro do <a> original */}
-                  </button>
+                  <div style={{ marginTop: 14 }}>
+                    <button
+                      type="button"
+                      onClick={openAttachment}
+                      disabled={openingAttachment}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 7,
+                        fontSize: 12,
+                        color: "#2563eb",
+                        padding: "7px 14px",
+                        background: "rgba(59,130,246,0.08)",
+                        borderRadius: 8,
+                        border: "1px solid rgba(59,130,246,0.2)",
+                        fontWeight: 500,
+                        fontFamily: "inherit",
+                        cursor: openingAttachment ? "wait" : "pointer",
+                        opacity: openingAttachment ? 0.7 : 1,
+                      }}
+                    >
+                      <i className="ti ti-paperclip" style={{ fontSize: 14 }} aria-hidden="true" />
+                      {openingAttachment ? "Abrindo..." : "Ver anexo"}
+                    </button>
+                    {attachmentError && (
+                      <div style={{ marginTop: 8, fontSize: 12, color: "#dc2626" }}>
+                        {attachmentError}
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {/* Meta info */}

@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma')
 const cache = require('../helpers/cache')
 const { sendStatusChangeEmail } = require('../helpers/email')
+const storage = require('../helpers/storage')
 
 const getDbUser = (email) => prisma.user.findUnique({ where: { email } })
 
@@ -17,7 +18,6 @@ const getPermission = async (role) => {
 
 const createTicket = async (req, res) => {
   const { title, description, priority } = req.body
-  const fileUrl = req.file ? `/uploads/${req.file.filename}` : null
   const dbUser = await getDbUser(req.user.email)
   if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
 
@@ -26,10 +26,28 @@ const createTicket = async (req, res) => {
     return res.status(403).json({ message: 'Sem permissão para criar tickets' })
   }
 
-  const ticket = await prisma.ticket.create({
-    data: { title, description, priority: priority || 'MEDIUM', fileUrl, userId: dbUser.id },
-    include: { user: { select: { id: true, name: true, email: true, role: true } } }
-  })
+  // Anexo: vai para o Supabase Storage (persistente). No banco guardamos só o caminho.
+  let fileUrl = null
+  if (req.file) {
+    try {
+      fileUrl = await storage.uploadTicketFile(req.file, dbUser.id)
+    } catch (err) {
+      const status = err.status || 502
+      return res.status(status).json({ message: err.message || 'Falha ao enviar o anexo' })
+    }
+  }
+
+  let ticket
+  try {
+    ticket = await prisma.ticket.create({
+      data: { title, description, priority: priority || 'MEDIUM', fileUrl, userId: dbUser.id },
+      include: { user: { select: { id: true, name: true, email: true, role: true } } }
+    })
+  } catch (err) {
+    // Se o ticket não foi criado, não deixa arquivo órfão no storage
+    if (fileUrl) await storage.removeFile(fileUrl)
+    throw err
+  }
 
   await cache.invalidateTickets(dbUser.id)
   return res.status(201).json(ticket)
@@ -249,9 +267,41 @@ const deleteTicket = async (req, res) => {
   await prisma.comment.deleteMany({ where: { ticketId } })
   await prisma.ticket.delete({ where: { id: ticketId } })
 
+  // Limpa o anexo do storage (não bloqueia a resposta se falhar)
+  if (existing.fileUrl) await storage.removeFile(existing.fileUrl)
+
   await cache.del(`ticket:${ticketId}`)
   await cache.invalidateTickets(existing.userId)
   return res.json({ message: 'Ticket deletado' })
+}
+
+const getTicketAttachment = async (req, res) => {
+  const dbUser = await getDbUser(req.user.email)
+  if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
+
+  const perm = await getPermission(dbUser.role)
+  const ticketId = Number(req.params.id)
+
+  const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } })
+  if (!ticket) return res.status(404).json({ message: 'Ticket não encontrado' })
+
+  if (!perm?.canViewAllTickets && ticket.userId !== dbUser.id) {
+    return res.status(403).json({ message: 'Acesso negado' })
+  }
+
+  if (!ticket.fileUrl) {
+    return res.status(404).json({ message: 'Este ticket não tem anexo' })
+  }
+
+  // Tickets antigos guardavam o arquivo no disco do servidor, que é apagado a cada deploy
+  if (ticket.fileUrl.startsWith('/uploads/') || ticket.fileUrl.startsWith('http')) {
+    return res.status(410).json({ message: 'Anexo indisponível (arquivo antigo, anterior à migração de armazenamento)' })
+  }
+
+  const url = await storage.getSignedUrl(ticket.fileUrl)
+  if (!url) return res.status(404).json({ message: 'Anexo não encontrado no armazenamento' })
+
+  return res.json({ url, expiresIn: storage.SIGNED_URL_TTL })
 }
 
 const addComment = async (req, res) => {
@@ -277,4 +327,4 @@ const addComment = async (req, res) => {
   return res.status(201).json(comment)
 }
 
-module.exports = { createTicket, getTickets, getTicketById, updateTicket, deleteTicket, addComment, getTicketCounts }
+module.exports = { createTicket, getTickets, getTicketById, updateTicket, deleteTicket, addComment, getTicketCounts, getTicketAttachment }

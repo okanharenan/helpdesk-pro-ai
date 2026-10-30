@@ -84,9 +84,19 @@ app.get('/api/clear-all-cache', protect, requireRole('SUPERADMIN'), async (req, 
 })
 
 app.use((err, req, res, next) => {
-  Sentry.captureException(err);
-  logger.error({ err }, "Erro não tratado na requisição");
-  res.status(err.status || 500).json({ message: err.message || "Erro interno" });
+  const tooBig = err.code === "LIMIT_FILE_SIZE";
+  const status = err.status || (tooBig ? 400 : 500);
+
+  if (status >= 500) {
+    Sentry.captureException(err);
+    logger.error({ err }, "Erro não tratado na requisição");
+  } else {
+    logger.warn({ status, message: err.message }, "Requisição recusada");
+  }
+
+  res.status(status).json({
+    message: tooBig ? "Arquivo muito grande (máximo 5MB)" : err.message || "Erro interno",
+  });
 });
 
 process.on("unhandledRejection", (reason) => {
