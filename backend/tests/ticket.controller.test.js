@@ -6,6 +6,12 @@ jest.mock("../src/helpers/cache", () => ({
   invalidateTickets: jest.fn(),
   TTL: { tickets: 300, ticket: 300 },
 }));
+jest.mock("../src/helpers/storage", () => ({
+  uploadTicketFile: jest.fn(),
+  getSignedUrl: jest.fn(),
+  removeFile: jest.fn(),
+  SIGNED_URL_TTL: 60,
+}));
 
 const prisma = require("../src/config/prisma");
 const { updateTicket } = require("../src/controllers/ticket.controller");
