@@ -29,6 +29,9 @@ const canAccessTicket = (perm, dbUser, ticket) =>
 // Filtro de "tickets que eu enxergo" para quem NÃO tem "ver todos"
 const mineWhere = (userId) => ({ OR: [{ userId }, { assigneeId: userId }] })
 
+// Quem pode trocar o responsável de um ticket
+const ASSIGNER_ROLES = ['SUPERADMIN', 'ADMIN']
+
 // Limpa o cache das listas de todas as pessoas envolvidas (dono, responsável antigo e novo)
 const invalidateLists = async (...userIds) => {
   const ids = [...new Set(userIds.filter(Boolean))]
@@ -57,11 +60,28 @@ const createTicket = async (req, res) => {
     }
   }
 
+  // Todo ticket já nasce com um SUPERADMIN como responsável.
+  // Se quem abriu já é SUPERADMIN, ele mesmo fica como responsável; senão, o SUPERADMIN ativo mais antigo.
+  let assigneeId = null
+  if (dbUser.role === 'SUPERADMIN') {
+    assigneeId = dbUser.id
+  } else {
+    const superadmin = await prisma.user.findFirst({
+      where: { role: 'SUPERADMIN', active: true },
+      orderBy: { id: 'asc' },
+      select: { id: true },
+    })
+    assigneeId = superadmin?.id ?? null
+  }
+
   let ticket
   try {
     ticket = await prisma.ticket.create({
-      data: { title, description, priority: priority || 'MEDIUM', fileUrl, userId: dbUser.id },
-      include: { user: { select: { id: true, name: true, email: true, role: true } } }
+      data: { title, description, priority: priority || 'MEDIUM', fileUrl, userId: dbUser.id, assigneeId },
+      include: {
+        user: { select: { id: true, name: true, email: true, role: true } },
+        assignee: { select: ASSIGNEE_SELECT },
+      }
     })
   } catch (err) {
     // Se o ticket não foi criado, não deixa arquivo órfão no storage
@@ -69,7 +89,7 @@ const createTicket = async (req, res) => {
     throw err
   }
 
-  await cache.invalidateTickets(dbUser.id)
+  await invalidateLists(dbUser.id, assigneeId)
   return res.status(201).json(ticket)
 }
 
@@ -351,13 +371,13 @@ const takeTicket = async (req, res) => {
   return res.json(ticket)
 }
 
-// Só o SUPERADMIN troca (ou remove) o responsável. assigneeId = null deixa o ticket sem responsável.
+// SUPERADMIN e ADMIN trocam (ou removem) o responsável. assigneeId = null deixa o ticket sem responsável.
 const assignTicket = async (req, res) => {
   const dbUser = await getDbUser(req.user.email)
   if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
 
-  if (dbUser.role !== 'SUPERADMIN') {
-    return res.status(403).json({ message: 'Apenas o SUPERADMIN pode trocar o responsável' })
+  if (!ASSIGNER_ROLES.includes(dbUser.role)) {
+    return res.status(403).json({ message: 'Apenas SUPERADMIN e ADMIN podem trocar o responsável' })
   }
 
   const ticketId = Number(req.params.id)
@@ -393,13 +413,13 @@ const assignTicket = async (req, res) => {
   return res.json(ticket)
 }
 
-// Lista de pessoas que podem ser responsáveis (equipe ativa, sem clientes) — para o seletor do SUPERADMIN
+// Lista de pessoas que podem ser responsáveis (equipe ativa, sem clientes) — para o seletor de SUPERADMIN/ADMIN
 const getAssignableUsers = async (req, res) => {
   const dbUser = await getDbUser(req.user.email)
   if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
 
-  if (dbUser.role !== 'SUPERADMIN') {
-    return res.status(403).json({ message: 'Apenas o SUPERADMIN pode ver esta lista' })
+  if (!ASSIGNER_ROLES.includes(dbUser.role)) {
+    return res.status(403).json({ message: 'Apenas SUPERADMIN e ADMIN podem ver esta lista' })
   }
 
   const users = await prisma.user.findMany({

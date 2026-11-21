@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useMe } from '../../contexts/MeContext'
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 
@@ -23,6 +24,9 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
     try { return JSON.parse(localStorage.getItem('notif_seen') || '[]') } catch { return [] }
   })
   const notifRef = useRef(null)
+  const { me } = useMe() || {}
+  const [tab, setTab] = useState('ALL')          // 'ALL' | 'UNREAD'
+  const [justMarked, setJustMarked] = useState(false) // feedback ao marcar tudo como lido
 
   const bg      = dark ? '#0f0f0f' : '#ffffff'
   const border  = dark ? '#1f1f1f' : '#e5e7eb'
@@ -52,6 +56,22 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
 
   // Gera notificações reais dos tickets
   const notifs = []
+
+  // Tickets atribuídos a mim (abertos ou em andamento)
+  if (me?.id) {
+    tickets
+      .filter(tk => tk.assigneeId === me.id && ['OPEN', 'DOING'].includes(tk.status))
+      .slice(0, 3)
+      .forEach(tk => notifs.push({
+        id: `assigned-${tk.id}`,
+        ticketId: tk.id,
+        icon: 'ti-user-check',
+        color: '#16a34a',
+        title: `Ticket #${tk.id} sob sua responsabilidade`,
+        msg: tk.title,
+        time: timeAgo(tk.updatedAt || tk.createdAt),
+      }))
+  }
 
   // Urgentes abertos
   tickets
@@ -101,21 +121,39 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
       time: timeAgo(tk.createdAt),
     }))
 
-  const unread = notifs.filter(n => !seen.includes(n.id)).length
+  const isRead = n => seen.includes(n.id)
+  const unread = notifs.filter(n => !isRead(n)).length
+  const allRead = notifs.length > 0 && unread === 0
+  const visibleNotifs = tab === 'UNREAD' ? notifs.filter(n => !isRead(n)) : notifs
 
+  // Guarda os ids lidos (mantém os antigos, limita o tamanho para não crescer sem fim)
+  const persistSeen = ids => {
+    const merged = [...new Set([...seen, ...ids])].slice(-200)
+    setSeen(merged)
+    try { localStorage.setItem('notif_seen', JSON.stringify(merged)) } catch { /* storage indisponível */ }
+  }
+
+  // Abrir o sino NÃO marca nada como lido: a pessoa decide o que já viu
   const handleOpenNotif = () => {
     setShowNotif(v => !v)
-    if (!showNotif) {
-      const allIds = notifs.map(n => n.id)
-      setSeen(allIds)
-      localStorage.setItem('notif_seen', JSON.stringify(allIds))
-    }
+    setJustMarked(false)
+  }
+
+  const handleMarkOneRead = (e, id) => {
+    e.stopPropagation()
+    persistSeen([id])
   }
 
   const handleMarkAllRead = () => {
-    const allIds = notifs.map(n => n.id)
-    setSeen(allIds)
-    localStorage.setItem('notif_seen', JSON.stringify(allIds))
+    persistSeen(notifs.map(n => n.id))
+    setJustMarked(true)
+    setTimeout(() => setJustMarked(false), 2500)
+  }
+
+  const handleOpenTicket = n => {
+    persistSeen([n.id])
+    navigate(`/tickets/${n.ticketId}`)
+    setShowNotif(false)
   }
 
   return (
@@ -150,8 +188,10 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
             style={{ width: 36, height: 36, borderRadius: 9, background: showNotif ? (dark ? 'rgba(22,163,74,0.1)' : '#f0fdf4') : inputBg, border: `1px solid ${showNotif ? '#bbf7d0' : border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: showNotif ? '#16a34a' : sec, transition: 'all 0.15s', position: 'relative' }}>
             <i className="ti ti-bell" style={{ fontSize: 16 }} aria-hidden="true" />
             {unread > 0 && (
-              <div style={{ position: 'absolute', top: 5, right: 5, width: 8, height: 8, background: '#dc2626', borderRadius: '50%', border: `2px solid ${bg}` }}
-                className="anim-pulse" />
+              <div className="anim-pulse"
+                style={{ position: 'absolute', top: -5, right: -5, minWidth: 16, height: 16, padding: '0 4px', background: '#dc2626', color: '#fff', borderRadius: 99, border: `2px solid ${bg}`, fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'content-box' }}>
+                {unread > 9 ? '9+' : unread}
+              </div>
             )}
           </button>
 
@@ -162,16 +202,23 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
               <div style={{ padding: '14px 16px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 13, fontWeight: 600, color: text }}>Notificações</span>
-                  {unread > 0
-                    ? <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: '#fee2e2', color: '#991b1b', fontWeight: 600 }}>{unread} nova{unread > 1 ? 's' : ''}</span>
-                    : <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: dark ? '#1f1f1f' : '#f3f4f6', color: muted, fontWeight: 500 }}>em dia</span>
-                  }
+                  {unread > 0 ? (
+                    <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 99, background: '#fee2e2', color: '#991b1b', fontWeight: 600 }}>
+                      {unread} não lida{unread > 1 ? 's' : ''}
+                    </span>
+                  ) : (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, padding: '2px 8px', borderRadius: 99, background: dark ? 'rgba(22,163,74,0.12)' : '#dcfce7', color: '#16a34a', fontWeight: 600 }}>
+                      <i className="ti ti-checks" style={{ fontSize: 11 }} aria-hidden="true" />
+                      tudo lido
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {notifs.length > 0 && (
-                    <button onClick={handleMarkAllRead}
-                      style={{ fontSize: 11, color: '#16a34a', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}>
-                      marcar tudo como lido
+                    <button onClick={handleMarkAllRead} disabled={allRead}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: allRead ? muted : '#16a34a', background: 'none', border: 'none', cursor: allRead ? 'default' : 'pointer', fontWeight: 500, padding: 0 }}>
+                      <i className={`ti ${allRead ? 'ti-checks' : 'ti-check'}`} style={{ fontSize: 13 }} aria-hidden="true" />
+                      {allRead ? 'tudo lido' : 'marcar tudo como lido'}
                     </button>
                   )}
                   <button onClick={() => setShowNotif(false)}
@@ -181,6 +228,33 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
                 </div>
               </div>
 
+              {/* Confirmação ao marcar tudo como lido */}
+              {justMarked && (
+                <div role="status" className="anim-slide"
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', background: dark ? 'rgba(22,163,74,0.12)' : '#f0fdf4', borderBottom: `1px solid ${border}`, fontSize: 12, fontWeight: 500, color: '#16a34a' }}>
+                  <i className="ti ti-circle-check" style={{ fontSize: 15 }} aria-hidden="true" />
+                  Todas as notificações foram marcadas como lidas
+                </div>
+              )}
+
+              {/* Abas */}
+              {notifs.length > 0 && (
+                <div style={{ display: 'flex', gap: 4, padding: '8px 12px', borderBottom: `1px solid ${border}` }}>
+                  {[
+                    { key: 'ALL', label: 'Todas', count: notifs.length },
+                    { key: 'UNREAD', label: 'Não lidas', count: unread },
+                  ].map(tb => {
+                    const active = tab === tb.key
+                    return (
+                      <button key={tb.key} onClick={() => setTab(tb.key)}
+                        style={{ fontSize: 11, fontWeight: active ? 600 : 500, padding: '5px 10px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: active ? (dark ? 'rgba(22,163,74,0.14)' : '#f0fdf4') : 'transparent', color: active ? '#16a34a' : muted }}>
+                        {tb.label} ({tb.count})
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
               {/* Lista */}
               {notifs.length === 0 ? (
                 <div style={{ padding: '36px 20px', textAlign: 'center' }}>
@@ -188,31 +262,55 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
                   <div style={{ fontSize: 13, color: text, fontWeight: 500, marginBottom: 4 }}>Tudo em dia</div>
                   <div style={{ fontSize: 12, color: muted }}>Nenhuma notificação no momento</div>
                 </div>
+              ) : visibleNotifs.length === 0 ? (
+                <div style={{ padding: '32px 20px', textAlign: 'center' }}>
+                  <i className="ti ti-circle-check" style={{ fontSize: 32, color: '#16a34a', display: 'block', marginBottom: 10 }} aria-hidden="true" />
+                  <div style={{ fontSize: 13, color: text, fontWeight: 500, marginBottom: 4 }}>Nenhuma notificação não lida</div>
+                  <div style={{ fontSize: 12, color: muted }}>Você já viu tudo por aqui</div>
+                </div>
               ) : (
-                notifs.map((n, i) => {
-                  const isNew = !seen.includes(n.id)
-                  return (
-                    <div key={n.id}
-                      onClick={() => { navigate(`/tickets/${n.ticketId}`); setShowNotif(false) }}
-                      style={{ display: 'flex', gap: 12, padding: '12px 16px', borderBottom: i < notifs.length - 1 ? `1px solid ${border}` : 'none', cursor: 'pointer', background: isNew ? (dark ? 'rgba(22,163,74,0.04)' : '#fafffe') : n.bg, transition: 'background 0.12s', borderLeft: `3px solid ${n.leftBorder}` }}
-                      onMouseEnter={e => e.currentTarget.style.background = dark ? '#1a1a1a' : '#f9fafb'}
-                      onMouseLeave={e => e.currentTarget.style.background = isNew ? (dark ? 'rgba(22,163,74,0.04)' : '#fafffe') : n.bg}>
-                      <div style={{ width: 32, height: 32, borderRadius: 8, background: `${n.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
-                        <i className={`ti ${n.icon}`} style={{ fontSize: 15, color: n.color }} aria-hidden="true" />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{n.title}</span>
-                          {isNew && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', flexShrink: 0 }} />}
+                <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+                  {visibleNotifs.map((n, i) => {
+                    const read = isRead(n)
+                    const rowBg = read ? 'transparent' : (dark ? 'rgba(22,163,74,0.07)' : '#f0fdf4')
+                    const hoverBg = dark ? '#1a1a1a' : '#f9fafb'
+                    return (
+                      <div key={n.id}
+                        onClick={() => handleOpenTicket(n)}
+                        style={{ display: 'flex', gap: 12, padding: '12px 16px', borderBottom: i < visibleNotifs.length - 1 ? `1px solid ${border}` : 'none', cursor: 'pointer', background: rowBg, transition: 'background 0.12s', borderLeft: `3px solid ${read ? 'transparent' : '#16a34a'}` }}
+                        onMouseEnter={e => e.currentTarget.style.background = hoverBg}
+                        onMouseLeave={e => e.currentTarget.style.background = rowBg}>
+                        <div style={{ width: 32, height: 32, borderRadius: 8, background: read ? (dark ? '#1f1f1f' : '#f3f4f6') : `${n.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1, opacity: read ? 0.7 : 1 }}>
+                          <i className={`ti ${n.icon}`} style={{ fontSize: 15, color: read ? muted : n.color }} aria-hidden="true" />
                         </div>
-                        <div style={{ fontSize: 11, color: muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.msg}</div>
+                        <div style={{ flex: 1, minWidth: 0, opacity: read ? 0.65 : 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                            <span style={{ fontSize: 12, fontWeight: read ? 400 : 700, color: read ? sec : text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{n.title}</span>
+                            {!read && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#16a34a', flexShrink: 0 }} />}
+                          </div>
+                          <div style={{ fontSize: 11, color: muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.msg}</div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+                          <span style={{ fontSize: 10, color: muted, background: dark ? '#1f1f1f' : '#f3f4f6', padding: '2px 7px', borderRadius: 99, border: `1px solid ${border}`, height: 'fit-content' }}>
+                            {n.time}
+                          </span>
+                          {read ? (
+                            <span title="Lida" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#16a34a', fontWeight: 500 }}>
+                              <i className="ti ti-checks" style={{ fontSize: 12 }} aria-hidden="true" />
+                              lida
+                            </span>
+                          ) : (
+                            <button onClick={e => handleMarkOneRead(e, n.id)} title="Marcar como lida"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#16a34a', background: 'none', border: `1px solid ${dark ? 'rgba(22,163,74,0.3)' : '#bbf7d0'}`, borderRadius: 99, padding: '1px 7px', cursor: 'pointer', fontWeight: 500, fontFamily: 'inherit' }}>
+                              <i className="ti ti-check" style={{ fontSize: 11 }} aria-hidden="true" />
+                              marcar lida
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <span style={{ fontSize: 10, color: muted, background: dark ? '#1f1f1f' : '#f3f4f6', padding: '2px 7px', borderRadius: 99, border: `1px solid ${border}`, height: 'fit-content', flexShrink: 0, marginTop: 2 }}>
-                        {n.time}
-                      </span>
-                    </div>
-                  )
-                })
+                    )
+                  })}
+                </div>
               )}
 
               {/* Footer */}

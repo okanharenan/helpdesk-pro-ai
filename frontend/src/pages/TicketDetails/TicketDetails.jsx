@@ -98,6 +98,11 @@ export default function TicketDetails() {
   const [commentFocused, setCommentFocused] = useState(false);
   const [openingAttachment, setOpeningAttachment] = useState(false);
   const [attachmentError, setAttachmentError] = useState("");
+  const [assignees, setAssignees] = useState([]);
+  // null = a pessoa ainda não escolheu outro responsável no seletor
+  const [pendingAssignee, setPendingAssignee] = useState(null);
+  const [assigning, setAssigning] = useState(false);
+  const [assignMsg, setAssignMsg] = useState(null);
 
   const token = localStorage.getItem("helpdesk_token");
   const headers = { Authorization: `Bearer ${token}` };
@@ -105,6 +110,8 @@ export default function TicketDetails() {
   const perm = me?.permissions;
   const canEdit = !!(perm?.canChangeStatus || perm?.canChangePriority);
   const canDelete = !!perm?.canDeleteTicket;
+  // SUPERADMIN e ADMIN podem trocar o responsável pelo ticket
+  const canAssign = dbRole === "SUPERADMIN" || dbRole === "ADMIN";
 
   const openAttachment = async () => {
     setAttachmentError("");
@@ -134,6 +141,44 @@ export default function TicketDetails() {
       .catch(() => navigate("/tickets"))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Carrega a lista de pessoas que podem ser responsáveis (só para quem pode trocar)
+  useEffect(() => {
+    if (!canAssign) return;
+    axios
+      .get(`${API}/tickets/assignees`, { headers })
+      .then((res) => setAssignees(res.data))
+      .catch(() => {});
+  }, [canAssign]);
+
+  const handleAssign = async (overrideId) => {
+    const value = overrideId !== undefined ? overrideId : pendingAssignee ?? "";
+    setAssigning(true);
+    setAssignMsg(null);
+    try {
+      const { data } = await axios.patch(
+        `${API}/tickets/${id}/assignee`,
+        { assigneeId: value === "" || value === null ? null : Number(value) },
+        { headers },
+      );
+      setTicket((p) => ({ ...p, assigneeId: data.assigneeId, assignee: data.assignee }));
+      setPendingAssignee(null);
+      setAssignMsg({
+        type: "ok",
+        text: data.assignee
+          ? `Responsável alterado para ${data.assignee.name}`
+          : "Ticket ficou sem responsável",
+      });
+      setTimeout(() => setAssignMsg(null), 4000);
+    } catch (err) {
+      setAssignMsg({
+        type: "error",
+        text: err.response?.data?.message || "Não foi possível alterar o responsável.",
+      });
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   const handleStatusChange = async (status) => {
     setUpdating(status);
@@ -247,6 +292,11 @@ export default function TicketDetails() {
 
   const st = STATUS[ticket.status];
   const pr = PRIORITY[ticket.priority];
+  const assignee = ticket.assignee;
+  const assigneeRole = assignee ? ROLE_COLOR[assignee.role] || ROLE_COLOR.AGENT : null;
+  const currentAssigneeValue = ticket.assigneeId ? String(ticket.assigneeId) : "";
+  const selectedAssignee = pendingAssignee ?? currentAssigneeValue;
+  const assigneeChanged = selectedAssignee !== currentAssigneeValue;
 
   return (
     <div
@@ -547,6 +597,7 @@ export default function TicketDetails() {
                 <div
                   style={{
                     display: "flex",
+                    flexWrap: "wrap",
                     gap: 16,
                     marginTop: 18,
                     paddingTop: 16,
@@ -562,7 +613,7 @@ export default function TicketDetails() {
                       background: dark ? "rgba(255,255,255,0.03)" : "#f8fafc",
                       borderRadius: 9,
                       border: `1px solid ${t.border}`,
-                      flex: 1,
+                      flex: "1 1 170px",
                     }}
                   >
                     <div
@@ -613,8 +664,70 @@ export default function TicketDetails() {
                       padding: "10px 14px",
                       background: dark ? "rgba(255,255,255,0.03)" : "#f8fafc",
                       borderRadius: 9,
+                      border: `1px solid ${assignee ? "rgba(22,163,74,0.25)" : t.border}`,
+                      flex: "1 1 170px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 8,
+                        background: assignee
+                          ? dark ? "rgba(22,163,74,0.15)" : "#f0fdf4"
+                          : dark ? "#1f1f1f" : "#e5e7eb",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: assignee ? "#16a34a" : t.textMuted,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {assignee ? (
+                        assignee.name?.[0]?.toUpperCase()
+                      ) : (
+                        <i className="ti ti-user-question" style={{ fontSize: 15 }} aria-hidden="true" />
+                      )}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color: t.textMuted,
+                          fontWeight: 500,
+                          marginBottom: 2,
+                        }}
+                      >
+                        Responsável
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: assignee ? t.textPrimary : t.textMuted,
+                          fontWeight: assignee ? 600 : 500,
+                          fontStyle: assignee ? "normal" : "italic",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {assignee ? assignee.name : "Sem responsável"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 9,
+                      padding: "10px 14px",
+                      background: dark ? "rgba(255,255,255,0.03)" : "#f8fafc",
+                      borderRadius: 9,
                       border: `1px solid ${t.border}`,
-                      flex: 1,
+                      flex: "1 1 170px",
                     }}
                   >
                     <div
@@ -671,7 +784,7 @@ export default function TicketDetails() {
                         background: dark ? "rgba(255,255,255,0.03)" : "#f8fafc",
                         borderRadius: 9,
                         border: `1px solid ${t.border}`,
-                        flex: 1,
+                        flex: "1 1 170px",
                       }}
                     >
                       <div
@@ -735,7 +848,7 @@ export default function TicketDetails() {
                         background: dark ? "rgba(255,255,255,0.03)" : "#f8fafc",
                         borderRadius: 9,
                         border: `1px solid ${t.border}`,
-                        flex: 1,
+                        flex: "1 1 170px",
                       }}
                     >
                       <div
@@ -1265,6 +1378,228 @@ export default function TicketDetails() {
                 )}
               </div>
 
+              {/* Responsável pelo ticket */}
+              <div style={card}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 14,
+                    paddingBottom: 12,
+                    borderBottom: `1px solid ${t.border}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 8,
+                      background: dark ? "rgba(22,163,74,0.12)" : "#f0fdf4",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <i
+                      className="ti ti-user-check"
+                      style={{ fontSize: 15, color: "#16a34a" }}
+                      aria-hidden="true"
+                    />
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: t.textPrimary }}>
+                    Responsável pelo ticket
+                  </span>
+                </div>
+
+                {/* Responsável atual */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    background: dark ? "rgba(255,255,255,0.03)" : "#f8fafc",
+                    border: `1px solid ${t.border}`,
+                    marginBottom: canAssign ? 14 : 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 9,
+                      background: assignee
+                        ? assigneeRole.bg
+                        : dark ? "#1f1f1f" : "#e5e7eb",
+                      color: assignee ? assigneeRole.color : t.textMuted,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {assignee ? (
+                      assignee.name?.[0]?.toUpperCase()
+                    ) : (
+                      <i className="ti ti-user-question" style={{ fontSize: 16 }} aria-hidden="true" />
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: assignee ? t.textPrimary : t.textMuted,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {assignee ? assignee.name : "Sem responsável"}
+                    </div>
+                    {assignee && (
+                      <span
+                        style={{
+                          display: "inline-block",
+                          marginTop: 3,
+                          fontSize: 10,
+                          fontWeight: 600,
+                          padding: "2px 8px",
+                          borderRadius: 99,
+                          background: assigneeRole.bg,
+                          color: assigneeRole.color,
+                        }}
+                      >
+                        {assigneeRole.label}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Troca de responsável (SUPERADMIN e ADMIN) */}
+                {canAssign ? (
+                  <div>
+                    <label
+                      style={{
+                        display: "block",
+                        fontSize: 11,
+                        color: t.textMuted,
+                        fontWeight: 500,
+                        marginBottom: 6,
+                      }}
+                    >
+                      Alterar responsável
+                    </label>
+                    <select
+                      value={selectedAssignee}
+                      onChange={(e) => setPendingAssignee(e.target.value)}
+                      disabled={assigning}
+                      style={{
+                        width: "100%",
+                        padding: "9px 10px",
+                        borderRadius: 9,
+                        border: `1px solid ${assigneeChanged ? "#16a34a" : t.border}`,
+                        background: dark ? "#1a1a1a" : "#ffffff",
+                        color: t.textPrimary,
+                        fontSize: 13,
+                        fontFamily: "inherit",
+                        outline: "none",
+                        cursor: assigning ? "wait" : "pointer",
+                      }}
+                    >
+                      <option value="">Sem responsável</option>
+                      {assignees.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({(ROLE_COLOR[u.role] || ROLE_COLOR.AGENT).label})
+                        </option>
+                      ))}
+                    </select>
+
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      <button
+                        onClick={() => handleAssign()}
+                        disabled={!assigneeChanged || assigning}
+                        style={{
+                          flex: 1,
+                          padding: "9px 12px",
+                          borderRadius: 9,
+                          border: "none",
+                          fontSize: 13,
+                          fontWeight: 600,
+                          fontFamily: "inherit",
+                          color: "#fff",
+                          background: "linear-gradient(135deg,#16a34a,#22c55e)",
+                          cursor: !assigneeChanged || assigning ? "not-allowed" : "pointer",
+                          opacity: !assigneeChanged || assigning ? 0.5 : 1,
+                        }}
+                      >
+                        {assigning ? "Salvando..." : "Salvar responsável"}
+                      </button>
+                      {me?.id && ticket.assigneeId !== me.id && (
+                        <button
+                          onClick={() => handleAssign(me.id)}
+                          disabled={assigning}
+                          title="Assumir este ticket"
+                          style={{
+                            padding: "9px 12px",
+                            borderRadius: 9,
+                            border: `1px solid ${t.border}`,
+                            background: "transparent",
+                            color: t.textSecondary,
+                            fontSize: 12,
+                            fontWeight: 500,
+                            fontFamily: "inherit",
+                            cursor: assigning ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          Atribuir a mim
+                        </button>
+                      )}
+                    </div>
+
+                    {assignMsg && (
+                      <div
+                        role="status"
+                        style={{
+                          marginTop: 10,
+                          fontSize: 12,
+                          fontWeight: 500,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          color: assignMsg.type === "ok" ? "#16a34a" : "#dc2626",
+                        }}
+                      >
+                        <i
+                          className={`ti ${assignMsg.type === "ok" ? "ti-circle-check" : "ti-alert-circle"}`}
+                          style={{ fontSize: 14 }}
+                          aria-hidden="true"
+                        />
+                        {assignMsg.text}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      marginTop: 12,
+                      fontSize: 11,
+                      color: t.textMuted,
+                    }}
+                  >
+                    <i className="ti ti-lock" style={{ fontSize: 13 }} aria-hidden="true" />
+                    Apenas SUPERADMIN e ADMIN alteram o responsável
+                  </div>
+                )}
+              </div>
+
               {/* Detalhes */}
               <div style={card}>
                 <div
@@ -1334,6 +1669,12 @@ export default function TicketDetails() {
                       mono: false,
                     },
                     {
+                      label: "Responsável",
+                      value: assignee ? assignee.name : "Sem responsável",
+                      icon: "ti-user-check",
+                      mono: false,
+                    },
+                    {
                       label: "Data de abertura",
                       value: new Date(ticket.createdAt).toLocaleDateString(
                         "pt-BR",
@@ -1351,7 +1692,7 @@ export default function TicketDetails() {
                         gap: 10,
                         padding: "10px 0",
                         borderBottom:
-                          i < 4 ? `1px solid ${t.borderLight}` : "none",
+                          i < 5 ? `1px solid ${t.borderLight}` : "none",
                       }}
                     >
                       <i

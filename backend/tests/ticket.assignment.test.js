@@ -16,7 +16,7 @@ jest.mock("../src/helpers/storage", () => ({
 
 const prisma = require("../src/config/prisma");
 const { sendStatusChangeEmail } = require("../src/helpers/email");
-const { takeTicket, assignTicket } = require("../src/controllers/ticket.controller");
+const { takeTicket, assignTicket, createTicket } = require("../src/controllers/ticket.controller");
 
 function mockRes() {
   const res = {};
@@ -99,14 +99,33 @@ describe("ticket.controller — takeTicket (iniciar chamado)", () => {
 describe("ticket.controller — assignTicket (trocar responsável)", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it("só o SUPERADMIN pode trocar o responsável", async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 2, role: "ADMIN" });
+  it("AGENT e CLIENT não podem trocar o responsável", async () => {
+    for (const role of ["AGENT", "CLIENT"]) {
+      jest.clearAllMocks();
+      prisma.user.findUnique.mockResolvedValue({ id: 2, role });
+      const res = mockRes();
+
+      await assignTicket(reqFor("x@empresa.com", { body: { assigneeId: 3 } }), res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(prisma.ticket.update).not.toHaveBeenCalled();
+    }
+  });
+
+  it("ADMIN também pode trocar o responsável", async () => {
+    prisma.user.findUnique
+      .mockResolvedValueOnce({ id: 2, role: "ADMIN" })
+      .mockResolvedValueOnce({ id: 3, role: "AGENT", active: true });
+    prisma.ticket.findUnique.mockResolvedValue({ id: 10, userId: 4, assigneeId: 1 });
+    prisma.ticket.update.mockResolvedValue({ id: 10, assigneeId: 3 });
     const res = mockRes();
 
     await assignTicket(reqFor("admin@empresa.com", { body: { assigneeId: 3 } }), res);
 
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(prisma.ticket.update).not.toHaveBeenCalled();
+    expect(prisma.ticket.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { assigneeId: 3 } })
+    );
+    expect(res.status).not.toHaveBeenCalledWith(403);
   });
 
   it("recusa atribuir a um CLIENT", async () => {
@@ -148,5 +167,63 @@ describe("ticket.controller — assignTicket (trocar responsável)", () => {
     expect(prisma.ticket.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { assigneeId: null } })
     );
+  });
+});
+
+describe("ticket.controller — createTicket (responsável automático)", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const body = { title: "Impressora", description: "Não liga", priority: "MEDIUM" };
+
+  it("ticket aberto por cliente já nasce atribuído ao SUPERADMIN", async () => {
+    prisma.user.findUnique.mockResolvedValue({ id: 4, role: "CLIENT" });
+    prisma.permission.findUnique.mockResolvedValue({ canCreateTicket: true });
+    prisma.user.findFirst.mockResolvedValue({ id: 1 });
+    prisma.ticket.create.mockResolvedValue({ id: 10, assigneeId: 1 });
+    const res = mockRes();
+
+    await createTicket({ user: { email: "cliente@empresa.com" }, body }, res);
+
+    expect(prisma.user.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { role: "SUPERADMIN", active: true } })
+    );
+    expect(prisma.ticket.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ userId: 4, assigneeId: 1 }),
+      })
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it("se o SUPERADMIN abre o ticket, ele mesmo é o responsável", async () => {
+    prisma.user.findUnique.mockResolvedValue({ id: 1, role: "SUPERADMIN" });
+    prisma.ticket.create.mockResolvedValue({ id: 11, assigneeId: 1 });
+    const res = mockRes();
+
+    await createTicket({ user: { email: "super@empresa.com" }, body }, res);
+
+    expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    expect(prisma.ticket.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ userId: 1, assigneeId: 1 }),
+      })
+    );
+  });
+
+  it("sem SUPERADMIN ativo, o ticket é criado sem responsável (sem quebrar)", async () => {
+    prisma.user.findUnique.mockResolvedValue({ id: 4, role: "CLIENT" });
+    prisma.permission.findUnique.mockResolvedValue({ canCreateTicket: true });
+    prisma.user.findFirst.mockResolvedValue(null);
+    prisma.ticket.create.mockResolvedValue({ id: 12, assigneeId: null });
+    const res = mockRes();
+
+    await createTicket({ user: { email: "cliente@empresa.com" }, body }, res);
+
+    expect(prisma.ticket.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assigneeId: null }),
+      })
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
   });
 });
