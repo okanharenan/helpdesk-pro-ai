@@ -9,19 +9,20 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String   @unique
-  password  String?
-  role      String   @default("CLIENT")
-  provider  String   @default("email")
-  tickets   Ticket[]
-  comments  Comment[]
+  id               Int       @id @default(autoincrement())
+  name             String
+  email            String    @unique
+  password         String?
+  role             String    @default("CLIENT")
+  provider         String    @default("email")
+  tickets          Ticket[]  @relation("TicketOwner")
+  assignedTickets  Ticket[]  @relation("TicketAssignee")
+  comments         Comment[]
   sentMessages     Message[] @relation("SentMessages")
   receivedMessages Message[] @relation("ReceivedMessages")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  active Boolean @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  active           Boolean   @default(true)
 }
 
 model Ticket {
@@ -32,10 +33,14 @@ model Ticket {
   priority    String    @default("MEDIUM")
   fileUrl     String?
   userId      Int
-  user        User      @relation(fields: [userId], references: [id])
+  user        User      @relation("TicketOwner", fields: [userId], references: [id])
+  assigneeId  Int?
+  assignee    User?     @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   comments    Comment[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  @@index([assigneeId])
 }
 
 model Comment {
@@ -46,6 +51,20 @@ model Comment {
   userId    Int
   user      User     @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
+}
+
+model Message {
+  id         Int      @id @default(autoincrement())
+  body       String
+  senderId   Int
+  receiverId Int
+  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([senderId, receiverId])
+  @@index([receiverId, read])
 }
 
 model Permission {
@@ -63,18 +82,4 @@ model Permission {
   canViewUsers         Boolean  @default(false)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
-}
-
-model Message {
-  id         Int      @id @default(autoincrement())
-  body       String
-  senderId   Int
-  receiverId Int
-  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
-  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
-  read       Boolean  @default(false)
-  createdAt  DateTime @default(now())
-
-  @@index([senderId, receiverId])
-  @@index([receiverId, read])
 }
