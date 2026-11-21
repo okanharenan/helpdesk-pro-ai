@@ -5,6 +5,7 @@ import Sidebar from "../../components/Sidebar/Sidebar";
 import Navbar from "../../components/Navbar/Navbar";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useMe } from "../../contexts/MeContext";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -75,12 +76,14 @@ export default function Tickets() {
   const navigate = useNavigate();
   const t = useThemeColors();
   const { dark } = useTheme();
+  const { me } = useMe();
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState("ALL");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("newest");
+  const [assigneeFilter, setAssigneeFilter] = useState("ALL");
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -136,6 +139,12 @@ export default function Tickets() {
     .filter((tk) => filter === "ALL" || tk.status === filter)
     .filter(
       (tk) =>
+        assigneeFilter === "ALL" ||
+        (assigneeFilter === "NONE" && !tk.assigneeId) ||
+        (assigneeFilter === "MINE" && tk.assigneeId === me?.id),
+    )
+    .filter(
+      (tk) =>
         !search ||
         tk.title.toLowerCase().includes(search.toLowerCase()) ||
         tk.description?.toLowerCase().includes(search.toLowerCase()),
@@ -151,7 +160,7 @@ export default function Tickets() {
 
   useEffect(() => {
     setPage(1);
-  }, [filter, search, sort]);
+  }, [filter, search, sort, assigneeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const paginated = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -163,6 +172,11 @@ export default function Tickets() {
     RESOLVED: tickets.filter((t) => t.status === "RESOLVED").length,
     CLOSED: tickets.filter((t) => t.status === "CLOSED").length,
   };
+
+  // Tickets que ainda podem ser iniciados (abertos/em andamento e sem responsável)
+  const unassignedCount = tickets.filter(
+    (t) => !t.assigneeId && ["OPEN", "DOING"].includes(t.status),
+  ).length;
 
   const urgentCount = tickets.filter(
     (t) => t.priority === "HIGH" && t.status === "OPEN",
@@ -459,6 +473,29 @@ export default function Tickets() {
                 <option value="oldest">Mais antigos</option>
               </select>
 
+              {/* Filtro por responsável */}
+              <select
+                value={assigneeFilter}
+                onChange={(e) => setAssigneeFilter(e.target.value)}
+                style={{
+                  background: t.cardBg,
+                  border: `1px solid ${assigneeFilter !== "ALL" ? "#16a34a" : t.border}`,
+                  borderRadius: 9,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  color: t.textSecondary,
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  outline: "none",
+                }}
+              >
+                <option value="ALL">Todos os responsáveis</option>
+                <option value="NONE">
+                  Sem responsável{unassignedCount > 0 ? ` (${unassignedCount})` : ""}
+                </option>
+                <option value="MINE">Meus tickets</option>
+              </select>
+
               <button
                 onClick={() => setShowForm(true)}
                 style={{
@@ -590,7 +627,7 @@ export default function Tickets() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "64px 1fr 150px 110px 120px 80px",
+                  gridTemplateColumns: "64px 1fr 150px 110px 150px 120px 80px",
                   gap: 12,
                   padding: "11px 16px",
                   borderBottom: `1px solid ${t.border}`,
@@ -606,6 +643,7 @@ export default function Tickets() {
                 <span>Chamado</span>
                 <span>Status</span>
                 <span>Prioridade</span>
+                <span>Responsável</span>
                 <span>Abertura</span>
                 <span></span>
               </div>
@@ -619,7 +657,7 @@ export default function Tickets() {
                     className={`anim-fade anim-d${Math.min(i + 1, 5)}`}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "64px 1fr 150px 110px 120px 80px",
+                      gridTemplateColumns: "64px 1fr 150px 110px 150px 120px 80px",
                       gap: 12,
                       padding: "14px 16px",
                       borderBottom: `1px solid ${t.borderLight}`,
@@ -725,6 +763,64 @@ export default function Tickets() {
                         />
                         {pr.label}
                       </span>
+                    </span>
+
+                    {/* Responsável */}
+                    <span style={{ minWidth: 0 }}>
+                      {tk.assignee ? (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 7,
+                            fontSize: 12,
+                            color: t.textSecondary,
+                            maxWidth: "100%",
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: 6,
+                              background: "linear-gradient(135deg,#6b7280,#9ca3af)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "#fff",
+                              fontSize: 9,
+                              fontWeight: 700,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {tk.assignee.name
+                              .split(" ")
+                              .map((w) => w[0])
+                              .slice(0, 2)
+                              .join("")
+                              .toUpperCase()}
+                          </span>
+                          <span
+                            style={{
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {tk.assignee.name}
+                          </span>
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: t.textMuted,
+                            fontStyle: "italic",
+                          }}
+                        >
+                          Sem responsável
+                        </span>
+                      )}
                     </span>
 
                     {/* Data */}

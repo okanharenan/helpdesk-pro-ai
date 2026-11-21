@@ -17,4 +17,9 @@ const addCommentSchema = z.object({
   body: z.string().trim().min(1, "comentário não pode ser vazio").max(3000),
 });
 
-module.exports = { createTicketSchema, updateTicketSchema, addCommentSchema };
+// assigneeId = número (novo responsável) ou null (deixar sem responsável)
+const assignTicketSchema = z.object({
+  assigneeId: z.number().int().positive().nullable(),
+});
+
+module.exports = { createTicketSchema, updateTicketSchema, addCommentSchema, assignTicketSchema };

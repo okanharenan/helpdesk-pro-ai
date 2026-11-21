@@ -7,20 +7,31 @@ const {
   deleteTicket,
   addComment,
   getTicketCounts,
-  getTicketAttachment
+  getTicketAttachment,
+  takeTicket,
+  assignTicket,
+  getAssignableUsers
 } = require('../controllers/ticket.controller')
 const { protect } = require('../middlewares/auth.middleware')
 const upload = require('../config/upload')
 const asyncHandler = require('../helpers/asyncHandler')
 const { validate } = require('../middlewares/validate.middleware')
-const { createTicketSchema, updateTicketSchema, addCommentSchema } = require('../schemas/ticket.schema')
+const {
+  createTicketSchema,
+  updateTicketSchema,
+  addCommentSchema,
+  assignTicketSchema
+} = require('../schemas/ticket.schema')
 
 router.use(protect)
 
 router.get('/', asyncHandler(getTickets))
 router.get('/counts', asyncHandler(getTicketCounts))
+router.get('/assignees', asyncHandler(getAssignableUsers))
 router.post('/', upload.single('file'), validate(createTicketSchema), asyncHandler(createTicket))
 router.get('/:id/attachment', asyncHandler(getTicketAttachment))
+router.post('/:id/take', asyncHandler(takeTicket))
+router.patch('/:id/assignee', validate(assignTicketSchema), asyncHandler(assignTicket))
 router.get('/:id', asyncHandler(getTicketById))
 router.patch('/:id', validate(updateTicketSchema), asyncHandler(updateTicket))
 router.delete('/:id', asyncHandler(deleteTicket))

@@ -16,6 +16,26 @@ const getPermission = async (role) => {
   return perm
 }
 
+// Dados do solicitante e do responsável que vão junto em toda resposta de ticket
+const USER_SELECT = { id: true, name: true, email: true }
+const ASSIGNEE_SELECT = { id: true, name: true, role: true }
+
+// Quem pode ver/mexer num ticket: quem tem "ver todos", o dono (solicitante) ou o responsável
+const canAccessTicket = (perm, dbUser, ticket) =>
+  !!perm?.canViewAllTickets ||
+  ticket.userId === dbUser.id ||
+  ticket.assigneeId === dbUser.id
+
+// Filtro de "tickets que eu enxergo" para quem NÃO tem "ver todos"
+const mineWhere = (userId) => ({ OR: [{ userId }, { assigneeId: userId }] })
+
+// Limpa o cache das listas de todas as pessoas envolvidas (dono, responsável antigo e novo)
+const invalidateLists = async (...userIds) => {
+  const ids = [...new Set(userIds.filter(Boolean))]
+  await cache.invalidateTickets() // tickets:all
+  if (ids.length) await cache.del(...ids.map((id) => `tickets:user:${id}`))
+}
+
 const createTicket = async (req, res) => {
   const { title, description, priority } = req.body
   const dbUser = await getDbUser(req.user.email)
@@ -63,7 +83,7 @@ const getTickets = async (req, res) => {
 
   const usePagination = req.query.page !== undefined
 
-  // Sem `page` na query: comportamento 100% igual ao que já existia (usado por
+  // Sem `page` na query: comportamento igual ao que já existia (usado por
   // Dashboard, Navbar e Relatórios) — inclusive o cache continua funcionando igual.
   if (!usePagination) {
     const cached = await cache.get(cacheKey)
@@ -73,12 +93,13 @@ const getTickets = async (req, res) => {
     }
 
     console.log(`Cache MISS: ${cacheKey}`)
-    const where = canViewAll ? {} : { userId: dbUser.id }
+    const where = canViewAll ? {} : mineWhere(dbUser.id)
 
     const tickets = await prisma.ticket.findMany({
       where,
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: USER_SELECT },
+        assignee: { select: ASSIGNEE_SELECT },
         _count: { select: { comments: true } }
       },
       orderBy: { createdAt: 'desc' }
@@ -88,29 +109,35 @@ const getTickets = async (req, res) => {
     return res.json(tickets)
   }
 
-  // Com `page` na query: modo paginado, usado pela tela de Tickets.
+  // Com `page` na query: modo paginado.
   const page = Math.max(1, parseInt(req.query.page) || 1)
   const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize) || 20))
   const status = req.query.status && req.query.status !== 'ALL' ? req.query.status : undefined
   const search = req.query.search?.trim()
   const sort = req.query.sort === 'oldest' ? 'asc' : 'desc'
 
+  // AND de condições: assim o OR da busca não colide com o OR de "meus tickets"
   const where = {
-    ...(canViewAll ? {} : { userId: dbUser.id }),
-    ...(status && { status }),
-    ...(search && {
-      OR: [
-        { title: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-      ],
-    }),
+    AND: [
+      canViewAll ? {} : mineWhere(dbUser.id),
+      status ? { status } : {},
+      search
+        ? {
+            OR: [
+              { title: { contains: search, mode: 'insensitive' } },
+              { description: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {},
+    ],
   }
 
   const [tickets, total] = await Promise.all([
     prisma.ticket.findMany({
       where,
       include: {
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: USER_SELECT },
+        assignee: { select: ASSIGNEE_SELECT },
         _count: { select: { comments: true } },
       },
       orderBy: { createdAt: sort },
@@ -135,7 +162,7 @@ const getTicketCounts = async (req, res) => {
 
   const perm = await getPermission(dbUser.role)
   const canViewAll = perm?.canViewAllTickets
-  const baseWhere = canViewAll ? {} : { userId: dbUser.id }
+  const baseWhere = canViewAll ? {} : mineWhere(dbUser.id)
 
   const [all, open, doing, resolved, closed] = await Promise.all([
     prisma.ticket.count({ where: baseWhere }),
@@ -158,7 +185,7 @@ const getTicketById = async (req, res) => {
   if (cached) {
     console.log(`Cache HIT: ${cacheKey}`)
     const ticket = typeof cached === 'string' ? JSON.parse(cached) : cached
-    if (!perm?.canViewAllTickets && ticket.userId !== dbUser.id) {
+    if (!canAccessTicket(perm, dbUser, ticket)) {
       return res.status(403).json({ message: 'Acesso negado' })
     }
     return res.json(ticket)
@@ -168,7 +195,8 @@ const getTicketById = async (req, res) => {
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
     include: {
-      user: { select: { id: true, name: true, email: true } },
+      user: { select: USER_SELECT },
+      assignee: { select: ASSIGNEE_SELECT },
       comments: {
         include: { user: { select: { id: true, name: true, role: true } } },
         orderBy: { createdAt: 'asc' }
@@ -177,7 +205,7 @@ const getTicketById = async (req, res) => {
   })
 
   if (!ticket) return res.status(404).json({ message: 'Ticket não encontrado' })
-  if (!perm?.canViewAllTickets && ticket.userId !== dbUser.id) {
+  if (!canAccessTicket(perm, dbUser, ticket)) {
     return res.status(403).json({ message: 'Acesso negado' })
   }
 
@@ -199,8 +227,7 @@ const updateTicket = async (req, res) => {
   const existing = await prisma.ticket.findUnique({ where: { id: ticketId } })
   if (!existing) return res.status(404).json({ message: 'Ticket não encontrado' })
 
-  const isOwner = existing.userId === dbUser.id
-  if (!perm?.canViewAllTickets && !isOwner) {
+  if (!canAccessTicket(perm, dbUser, existing)) {
     return res.status(403).json({ message: 'Acesso negado' })
   }
 
@@ -229,11 +256,14 @@ const updateTicket = async (req, res) => {
       ...(title && { title }),
       ...(description && { description }),
     },
-    include: { user: { select: { id: true, name: true, email: true } } }
+    include: {
+      user: { select: USER_SELECT },
+      assignee: { select: ASSIGNEE_SELECT },
+    }
   })
 
   await cache.del(`ticket:${ticketId}`)
-  await cache.invalidateTickets(existing.userId)
+  await invalidateLists(existing.userId, existing.assigneeId)
 
   if (status && existing.status !== status) {
     sendStatusChangeEmail({
@@ -247,6 +277,138 @@ const updateTicket = async (req, res) => {
   }
 
   return res.json(ticket)
+}
+
+// "Iniciar chamado": qualquer pessoa da equipe (não-CLIENT) assume um ticket SEM responsável.
+// Se estava Aberto, passa para Em andamento. O dono do ticket recebe o e-mail de mudança de status.
+const takeTicket = async (req, res) => {
+  const dbUser = await getDbUser(req.user.email)
+  if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
+
+  if (dbUser.role === 'CLIENT') {
+    return res.status(403).json({ message: 'Apenas a equipe de suporte pode assumir chamados' })
+  }
+
+  // Quem não enxerga os tickets de outras pessoas também não pode assumi-los
+  const perm = await getPermission(dbUser.role)
+  if (!perm?.canViewAllTickets) {
+    return res.status(403).json({ message: 'Sem permissão para assumir chamados' })
+  }
+
+  const ticketId = Number(req.params.id)
+  const existing = await prisma.ticket.findUnique({ where: { id: ticketId } })
+  if (!existing) return res.status(404).json({ message: 'Ticket não encontrado' })
+
+  if (existing.assigneeId) {
+    return res.status(409).json({
+      message: existing.assigneeId === dbUser.id
+        ? 'Você já é o responsável por este chamado'
+        : 'Este chamado já tem um responsável',
+    })
+  }
+
+  if (!['OPEN', 'DOING'].includes(existing.status)) {
+    return res.status(409).json({ message: 'Só é possível assumir chamados abertos ou em andamento' })
+  }
+
+  const newStatus = existing.status === 'OPEN' ? 'DOING' : existing.status
+
+  // As condições estão no próprio WHERE, então o banco decide o vencedor numa única operação:
+  // se duas pessoas clicarem ao mesmo tempo, só uma atualiza (count = 1) e a outra recebe 409.
+  const result = await prisma.ticket.updateMany({
+    where: { id: ticketId, assigneeId: null, status: existing.status },
+    data: { assigneeId: dbUser.id, status: newStatus },
+  })
+
+  if (result.count === 0) {
+    return res.status(409).json({
+      message: 'Este chamado acabou de ser assumido por outra pessoa. Atualize a página.',
+    })
+  }
+
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    include: {
+      user: { select: USER_SELECT },
+      assignee: { select: ASSIGNEE_SELECT },
+    },
+  })
+
+  await cache.del(`ticket:${ticketId}`)
+  await invalidateLists(ticket.userId, dbUser.id)
+
+  if (newStatus !== existing.status) {
+    sendStatusChangeEmail({
+      to: ticket.user.email,
+      name: ticket.user.name,
+      ticketId: ticket.id,
+      ticketTitle: ticket.title,
+      oldStatus: existing.status,
+      newStatus,
+    })
+  }
+
+  return res.json(ticket)
+}
+
+// Só o SUPERADMIN troca (ou remove) o responsável. assigneeId = null deixa o ticket sem responsável.
+const assignTicket = async (req, res) => {
+  const dbUser = await getDbUser(req.user.email)
+  if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
+
+  if (dbUser.role !== 'SUPERADMIN') {
+    return res.status(403).json({ message: 'Apenas o SUPERADMIN pode trocar o responsável' })
+  }
+
+  const ticketId = Number(req.params.id)
+  const existing = await prisma.ticket.findUnique({ where: { id: ticketId } })
+  if (!existing) return res.status(404).json({ message: 'Ticket não encontrado' })
+
+  const { assigneeId } = req.body
+  let newAssigneeId = null
+
+  if (assigneeId !== null && assigneeId !== undefined) {
+    const target = await prisma.user.findUnique({ where: { id: Number(assigneeId) } })
+    if (!target || target.active === false) {
+      return res.status(400).json({ message: 'Usuário não encontrado ou desativado' })
+    }
+    if (target.role === 'CLIENT') {
+      return res.status(400).json({ message: 'Clientes não podem ser responsáveis por chamados' })
+    }
+    newAssigneeId = target.id
+  }
+
+  const ticket = await prisma.ticket.update({
+    where: { id: ticketId },
+    data: { assigneeId: newAssigneeId },
+    include: {
+      user: { select: USER_SELECT },
+      assignee: { select: ASSIGNEE_SELECT },
+    },
+  })
+
+  await cache.del(`ticket:${ticketId}`)
+  await invalidateLists(existing.userId, existing.assigneeId, newAssigneeId)
+
+  return res.json(ticket)
+}
+
+// Lista de pessoas que podem ser responsáveis (equipe ativa, sem clientes) — para o seletor do SUPERADMIN
+const getAssignableUsers = async (req, res) => {
+  const dbUser = await getDbUser(req.user.email)
+  if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
+
+  if (dbUser.role !== 'SUPERADMIN') {
+    return res.status(403).json({ message: 'Apenas o SUPERADMIN pode ver esta lista' })
+  }
+
+  const users = await prisma.user.findMany({
+    where: { active: true, role: { not: 'CLIENT' } },
+    select: { id: true, name: true, role: true },
+    orderBy: { name: 'asc' },
+  })
+
+  return res.json(users)
 }
 
 const deleteTicket = async (req, res) => {
@@ -271,7 +433,7 @@ const deleteTicket = async (req, res) => {
   if (existing.fileUrl) await storage.removeFile(existing.fileUrl)
 
   await cache.del(`ticket:${ticketId}`)
-  await cache.invalidateTickets(existing.userId)
+  await invalidateLists(existing.userId, existing.assigneeId)
   return res.json({ message: 'Ticket deletado' })
 }
 
@@ -285,7 +447,7 @@ const getTicketAttachment = async (req, res) => {
   const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } })
   if (!ticket) return res.status(404).json({ message: 'Ticket não encontrado' })
 
-  if (!perm?.canViewAllTickets && ticket.userId !== dbUser.id) {
+  if (!canAccessTicket(perm, dbUser, ticket)) {
     return res.status(403).json({ message: 'Acesso negado' })
   }
 
@@ -313,8 +475,8 @@ const addComment = async (req, res) => {
   const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } })
   if (!ticket) return res.status(404).json({ message: 'Ticket não encontrado' })
 
-  // CLIENT só comenta nos próprios, outros precisam de canCommentAny
-  if (!perm?.canCommentAny && ticket.userId !== dbUser.id) {
+  // Comenta quem tem "comentar em qualquer ticket", o dono do ticket ou o responsável
+  if (!perm?.canCommentAny && ticket.userId !== dbUser.id && ticket.assigneeId !== dbUser.id) {
     return res.status(403).json({ message: 'Sem permissão para comentar neste ticket' })
   }
 
@@ -327,4 +489,7 @@ const addComment = async (req, res) => {
   return res.status(201).json(comment)
 }
 
-module.exports = { createTicket, getTickets, getTicketById, updateTicket, deleteTicket, addComment, getTicketCounts, getTicketAttachment }
+module.exports = {
+  createTicket, getTickets, getTicketById, updateTicket, deleteTicket, addComment,
+  getTicketCounts, getTicketAttachment, takeTicket, assignTicket, getAssignableUsers,
+}
