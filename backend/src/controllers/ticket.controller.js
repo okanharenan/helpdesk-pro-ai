@@ -2,6 +2,7 @@ const prisma = require('../config/prisma')
 const cache = require('../helpers/cache')
 const { sendStatusChangeEmail } = require('../helpers/email')
 const storage = require('../helpers/storage')
+const { recordHistory } = require('../helpers/ticketHistory')
 
 const getDbUser = (email) => prisma.user.findUnique({ where: { email } })
 
@@ -90,6 +91,12 @@ const createTicket = async (req, res) => {
   }
 
   await invalidateLists(dbUser.id, assigneeId)
+  await recordHistory([
+    { ticketId: ticket.id, actorId: dbUser.id, action: 'CREATED' },
+    ticket.assignee && {
+      ticketId: ticket.id, actorId: dbUser.id, action: 'AUTO_ASSIGNED', toValue: ticket.assignee.name,
+    },
+  ])
   return res.status(201).json(ticket)
 }
 
@@ -285,6 +292,18 @@ const updateTicket = async (req, res) => {
   await cache.del(`ticket:${ticketId}`)
   await invalidateLists(existing.userId, existing.assigneeId)
 
+  await recordHistory([
+    status && status !== existing.status && {
+      ticketId, actorId: dbUser.id, action: 'STATUS_CHANGED', fromValue: existing.status, toValue: status,
+    },
+    priority && priority !== existing.priority && {
+      ticketId, actorId: dbUser.id, action: 'PRIORITY_CHANGED', fromValue: existing.priority, toValue: priority,
+    },
+    ((title && title !== existing.title) || (description && description !== existing.description)) && {
+      ticketId, actorId: dbUser.id, action: 'EDITED',
+    },
+  ])
+
   if (status && existing.status !== status) {
     sendStatusChangeEmail({
       to: ticket.user.email,
@@ -357,6 +376,13 @@ const takeTicket = async (req, res) => {
   await cache.del(`ticket:${ticketId}`)
   await invalidateLists(ticket.userId, dbUser.id)
 
+  await recordHistory([
+    { ticketId, actorId: dbUser.id, action: 'TAKEN', toValue: dbUser.name },
+    newStatus !== existing.status && {
+      ticketId, actorId: dbUser.id, action: 'STATUS_CHANGED', fromValue: existing.status, toValue: newStatus,
+    },
+  ])
+
   if (newStatus !== existing.status) {
     sendStatusChangeEmail({
       to: ticket.user.email,
@@ -381,7 +407,10 @@ const assignTicket = async (req, res) => {
   }
 
   const ticketId = Number(req.params.id)
-  const existing = await prisma.ticket.findUnique({ where: { id: ticketId } })
+  const existing = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    include: { assignee: { select: ASSIGNEE_SELECT } },
+  })
   if (!existing) return res.status(404).json({ message: 'Ticket não encontrado' })
 
   const { assigneeId } = req.body
@@ -410,6 +439,18 @@ const assignTicket = async (req, res) => {
   await cache.del(`ticket:${ticketId}`)
   await invalidateLists(existing.userId, existing.assigneeId, newAssigneeId)
 
+  // Só registra se o responsável realmente mudou
+  if ((existing.assigneeId ?? null) !== newAssigneeId) {
+    const action = newAssigneeId === null ? 'UNASSIGNED' : existing.assigneeId ? 'REASSIGNED' : 'ASSIGNED'
+    await recordHistory({
+      ticketId,
+      actorId: dbUser.id,
+      action,
+      fromValue: existing.assignee?.name ?? null,
+      toValue: ticket.assignee?.name ?? null,
+    })
+  }
+
   return res.json(ticket)
 }
 
@@ -429,6 +470,32 @@ const getAssignableUsers = async (req, res) => {
   })
 
   return res.json(users)
+}
+
+// Linha do tempo do ticket (mais recente primeiro). Mesma regra de acesso do próprio ticket.
+const getTicketHistory = async (req, res) => {
+  const dbUser = await getDbUser(req.user.email)
+  if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
+
+  const perm = await getPermission(dbUser.role)
+  const ticketId = Number(req.params.id)
+
+  const ticket = await prisma.ticket.findUnique({
+    where: { id: ticketId },
+    select: { id: true, userId: true, assigneeId: true },
+  })
+  if (!ticket) return res.status(404).json({ message: 'Ticket não encontrado' })
+  if (!canAccessTicket(perm, dbUser, ticket)) {
+    return res.status(403).json({ message: 'Acesso negado' })
+  }
+
+  const history = await prisma.ticketHistory.findMany({
+    where: { ticketId },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    include: { actor: { select: { id: true, name: true, role: true } } },
+  })
+
+  return res.json(history)
 }
 
 const deleteTicket = async (req, res) => {
@@ -512,4 +579,5 @@ const addComment = async (req, res) => {
 module.exports = {
   createTicket, getTickets, getTicketById, updateTicket, deleteTicket, addComment,
   getTicketCounts, getTicketAttachment, takeTicket, assignTicket, getAssignableUsers,
+  getTicketHistory,
 }

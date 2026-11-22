@@ -84,6 +84,55 @@ function timeAgo(date) {
   });
 }
 
+// Traduz um evento do histórico em ícone, cor e frase
+function describeHistory(h) {
+  const stLabel = (v) => STATUS[v]?.label || v;
+  const prLabel = (v) => PRIORITY[v]?.label || v;
+  switch (h.action) {
+    case "CREATED":
+      return { icon: "ti-plus", color: "#16a34a", verb: "abriu o ticket" };
+    case "AUTO_ASSIGNED":
+      return {
+        icon: "ti-user-check",
+        color: "#16a34a",
+        system: true,
+        verb: `Atribuído automaticamente a ${h.toValue}`,
+      };
+    case "ASSIGNED":
+      return { icon: "ti-user-check", color: "#2563eb", verb: `atribuiu o ticket a ${h.toValue}` };
+    case "REASSIGNED":
+      return {
+        icon: "ti-arrows-exchange",
+        color: "#2563eb",
+        verb: `trocou o responsável de ${h.fromValue || "ninguém"} para ${h.toValue}`,
+      };
+    case "UNASSIGNED":
+      return {
+        icon: "ti-user-minus",
+        color: "#6b7280",
+        verb: `removeu o responsável${h.fromValue ? ` (${h.fromValue})` : ""}`,
+      };
+    case "TAKEN":
+      return { icon: "ti-hand-grab", color: "#2563eb", verb: "assumiu o ticket" };
+    case "STATUS_CHANGED":
+      return {
+        icon: STATUS[h.toValue]?.icon || "ti-refresh",
+        color: STATUS[h.toValue]?.color || "#6b7280",
+        verb: `alterou o status de ${stLabel(h.fromValue)} para ${stLabel(h.toValue)}`,
+      };
+    case "PRIORITY_CHANGED":
+      return {
+        icon: PRIORITY[h.toValue]?.icon || "ti-flag",
+        color: PRIORITY[h.toValue]?.color || "#6b7280",
+        verb: `alterou a prioridade de ${prLabel(h.fromValue)} para ${prLabel(h.toValue)}`,
+      };
+    case "EDITED":
+      return { icon: "ti-pencil", color: "#d97706", verb: "editou o título ou a descrição" };
+    default:
+      return { icon: "ti-point", color: "#6b7280", verb: "atualizou o ticket" };
+  }
+}
+
 export default function TicketDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -103,6 +152,8 @@ export default function TicketDetails() {
   const [pendingAssignee, setPendingAssignee] = useState(null);
   const [assigning, setAssigning] = useState(false);
   const [assignMsg, setAssignMsg] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
 
   const token = localStorage.getItem("helpdesk_token");
   const headers = { Authorization: `Bearer ${token}` };
@@ -142,6 +193,18 @@ export default function TicketDetails() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  // Histórico de atividades do ticket (quem fez o quê e quando)
+  const loadHistory = () =>
+    axios
+      .get(`${API}/tickets/${id}/history`, { headers })
+      .then((res) => setHistory(res.data))
+      .catch(() => {})
+      .finally(() => setHistoryLoading(false));
+
+  useEffect(() => {
+    loadHistory();
+  }, [id]);
+
   // Carrega a lista de pessoas que podem ser responsáveis (só para quem pode trocar)
   useEffect(() => {
     if (!canAssign) return;
@@ -163,6 +226,7 @@ export default function TicketDetails() {
       );
       setTicket((p) => ({ ...p, assigneeId: data.assigneeId, assignee: data.assignee }));
       setPendingAssignee(null);
+      loadHistory();
       setAssignMsg({
         type: "ok",
         text: data.assignee
@@ -189,6 +253,7 @@ export default function TicketDetails() {
         { headers },
       );
       setTicket((p) => ({ ...p, status: data.status }));
+      loadHistory();
     } finally {
       setUpdating(null);
     }
@@ -202,6 +267,7 @@ export default function TicketDetails() {
         { headers },
       );
       setTicket((p) => ({ ...p, priority: data.priority }));
+      loadHistory();
     } catch { }
   };
 
@@ -1749,6 +1815,133 @@ export default function TicketDetails() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Histórico de atividades */}
+              <div style={card}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 14,
+                    paddingBottom: 12,
+                    borderBottom: `1px solid ${t.border}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 8,
+                      background: dark ? "rgba(217,119,6,0.12)" : "#fef3c7",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <i
+                      className="ti ti-history"
+                      style={{ fontSize: 15, color: "#d97706" }}
+                      aria-hidden="true"
+                    />
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: t.textPrimary, flex: 1 }}>
+                    Histórico de atividades
+                  </span>
+                  {history.length > 0 && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: t.textMuted,
+                        background: dark ? "#1f1f1f" : "#f3f4f6",
+                        padding: "2px 8px",
+                        borderRadius: 99,
+                      }}
+                    >
+                      {history.length}
+                    </span>
+                  )}
+                </div>
+
+                {historyLoading ? (
+                  <div style={{ fontSize: 12, color: t.textMuted }}>Carregando histórico...</div>
+                ) : history.length === 0 ? (
+                  <div style={{ fontSize: 12, color: t.textMuted }}>
+                    Nenhuma atividade registrada ainda.
+                  </div>
+                ) : (
+                  <div style={{ maxHeight: 340, overflowY: "auto", paddingRight: 4 }}>
+                    {history.map((h, i) => {
+                      const d = describeHistory(h);
+                      const isLast = i === history.length - 1;
+                      return (
+                        <div key={h.id} style={{ display: "flex", gap: 12 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: 26,
+                                height: 26,
+                                borderRadius: "50%",
+                                background: `${d.color}1a`,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <i
+                                className={`ti ${d.icon}`}
+                                style={{ fontSize: 13, color: d.color }}
+                                aria-hidden="true"
+                              />
+                            </div>
+                            {!isLast && (
+                              <div
+                                style={{
+                                  width: 2,
+                                  flex: 1,
+                                  minHeight: 14,
+                                  background: t.border,
+                                  margin: "3px 0",
+                                }}
+                              />
+                            )}
+                          </div>
+                          <div style={{ paddingBottom: isLast ? 0 : 14, minWidth: 0, flex: 1 }}>
+                            <div style={{ fontSize: 12, color: t.textSecondary, lineHeight: 1.45 }}>
+                              {d.system ? (
+                                d.verb
+                              ) : (
+                                <>
+                                  <strong style={{ color: t.textPrimary, fontWeight: 600 }}>
+                                    {h.actor?.name || "Usuário removido"}
+                                  </strong>{" "}
+                                  {d.verb}
+                                </>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 10, color: t.textMuted, marginTop: 2 }}>
+                              {new Date(h.createdAt).toLocaleString("pt-BR", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Linha do tempo de status */}

@@ -10,7 +10,8 @@ const {
   getTicketAttachment,
   takeTicket,
   assignTicket,
-  getAssignableUsers
+  getAssignableUsers,
+  getTicketHistory
 } = require('../controllers/ticket.controller')
 const { protect } = require('../middlewares/auth.middleware')
 const upload = require('../config/upload')
@@ -30,6 +31,7 @@ router.get('/counts', asyncHandler(getTicketCounts))
 router.get('/assignees', asyncHandler(getAssignableUsers))
 router.post('/', upload.single('file'), validate(createTicketSchema), asyncHandler(createTicket))
 router.get('/:id/attachment', asyncHandler(getTicketAttachment))
+router.get('/:id/history', asyncHandler(getTicketHistory))
 router.post('/:id/take', asyncHandler(takeTicket))
 router.patch('/:id/assignee', validate(assignTicketSchema), asyncHandler(assignTicket))
 router.get('/:id', asyncHandler(getTicketById))
