@@ -1,108 +1,127 @@
-const { supabase } = require('../config/supabase')
-const prisma = require('../config/prisma')
-const cache = require('../helpers/cache')
-const { getPermission } = require('../helpers/permissions')
+const { supabase } = require("../config/supabase");
+const prisma = require("../config/prisma");
+const cache = require("../helpers/cache");
+const { getPermission } = require("../helpers/permissions");
 
 const generateToken = (id) => {
-  const jwt = require('jsonwebtoken')
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '7d' })
-}
+  const jwt = require("jsonwebtoken");
+  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+};
 
 const register = async (req, res) => {
-  const { name, email, password } = req.body
+  const { name, email, password } = req.body;
 
   const { data, error } = await supabase.auth.signUp({
-    email, password, options: { data: { name } }
-  })
+    email,
+    password,
+    options: { data: { name } },
+  });
 
-  if (error) return res.status(400).json({ message: error.message })
+  if (error) return res.status(400).json({ message: error.message });
 
   try {
     await prisma.user.create({
-      data: { name, email, password: '', provider: 'email' }
-    })
+      data: { name, email, password: "", provider: "email" },
+    });
   } catch (e) {
-    console.error('Prisma error:', e.message)
+    console.error("Prisma error:", e.message);
   }
 
   return res.status(201).json({
     user: data.user,
-    token: data.session?.access_token
-  })
-}
+    token: data.session?.access_token,
+  });
+};
 
 const login = async (req, res) => {
-  const { email, password } = req.body
+  const { email, password } = req.body;
 
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) return res.status(401).json({ message: 'Credenciais inválidas' })
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+  if (error) return res.status(401).json({ message: "Credenciais inválidas" });
 
   // Garante que o usuário existe no banco
-  let dbUser = await prisma.user.findUnique({ where: { email } })
+  let dbUser = await prisma.user.findUnique({ where: { email } });
   if (!dbUser) {
-    const name = data.user?.user_metadata?.name || email.split('@')[0]
+    const name = data.user?.user_metadata?.name || email.split("@")[0];
     dbUser = await prisma.user.create({
-      data: { name, email, password: '', provider: 'email', active: true }
-    })
+      data: { name, email, password: "", provider: "email", active: true },
+    });
   }
 
-  const userPayload = { ...data.user, role: dbUser.role }
-  await cache.set(`me:${email}`, userPayload, 60 * 5)
+  const userPayload = { ...data.user, role: dbUser.role };
+  await cache.set(`me:${email}`, userPayload, 60 * 5);
 
-  return res.json({ user: userPayload, token: data.session.access_token })
-}
+  return res.json({ user: userPayload, token: data.session.access_token });
+};
 
 const forgotPassword = async (req, res) => {
-  const { email } = req.body
+  const { email } = req.body;
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.CLIENT_URL}/reset-password`
-  })
-  if (error) return res.status(400).json({ message: error.message })
-  return res.json({ message: 'Email de recuperação enviado' })
-}
+    redirectTo: `${process.env.CLIENT_URL}/reset-password`,
+  });
+  if (error) return res.status(400).json({ message: error.message });
+  return res.json({ message: "Email de recuperação enviado" });
+};
 
 const googleAuthUrl = async (req, res) => {
   const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: `${process.env.CLIENT_URL}/auth/callback` }
-  })
-  if (error) return res.status(400).json({ message: error.message })
-  return res.json({ url: data.url })
-}
+    provider: "google",
+    options: { redirectTo: `${process.env.CLIENT_URL}/auth/callback` },
+  });
+  if (error) return res.status(400).json({ message: error.message });
+  return res.json({ url: data.url });
+};
 
 const facebookAuthUrl = async (req, res) => {
   const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'facebook',
-    options: { redirectTo: `${process.env.CLIENT_URL}/auth/callback` }
-  })
-  if (error) return res.status(400).json({ message: error.message })
-  return res.json({ url: data.url })
-}
+    provider: "facebook",
+    options: { redirectTo: `${process.env.CLIENT_URL}/auth/callback` },
+  });
+  if (error) return res.status(400).json({ message: error.message });
+  return res.json({ url: data.url });
+};
 
 const getMe = async (req, res) => {
-  const email = req.user.email
-  const cacheKey = `me:${email}`
+  const email = req.user.email;
+  const cacheKey = `me:${email}`;
 
-  let dbUser
-  const cached = await cache.get(cacheKey)
+  let dbUser;
+  const cached = await cache.get(cacheKey);
   if (cached) {
-    console.log(`Cache HIT: ${cacheKey}`)
-    dbUser = typeof cached === 'string' ? JSON.parse(cached) : cached
+    console.log(`Cache HIT: ${cacheKey}`);
+    dbUser = typeof cached === "string" ? JSON.parse(cached) : cached;
   } else {
-    console.log(`Cache MISS: ${cacheKey}`)
+    console.log(`Cache MISS: ${cacheKey}`);
     dbUser = await prisma.user.findUnique({
       where: { email },
-      select: { id: true, name: true, email: true, role: true, provider: true }
-    })
-    if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
-    await cache.set(cacheKey, dbUser, 60 * 5)
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        provider: true,
+        available: true,
+      },
+    });
+    if (!dbUser)
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    await cache.set(cacheKey, dbUser, 60 * 5);
   }
 
+  const permissions = await getPermission(dbUser.role);
 
-  const permissions = await getPermission(dbUser.role)
+  const userPayload = { ...req.user, ...dbUser, permissions };
 
-  const userPayload = { ...req.user, ...dbUser, permissions }
-
-  return res.json(userPayload)
-}
-module.exports = { register, login, forgotPassword, googleAuthUrl, facebookAuthUrl, getMe }
+  return res.json(userPayload);
+};
+module.exports = {
+  register,
+  login,
+  forgotPassword,
+  googleAuthUrl,
+  facebookAuthUrl,
+  getMe,
+};

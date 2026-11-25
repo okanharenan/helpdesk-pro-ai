@@ -5,6 +5,7 @@ import Navbar from "../../components/Navbar/Navbar";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useMe } from "../../contexts/MeContext";
+import AssignmentSettings from "./AssignmentSettings";
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -305,6 +306,7 @@ export default function Settings() {
       icon: "ti-shield-check",
     },
     { key: "users", label: "Gerenciar usuários", icon: "ti-users" },
+    { key: "assignment", label: "Distribuição de tickets", icon: "ti-arrows-shuffle" },
     { key: "system", label: "Visão do sistema", icon: "ti-chart-bar" },
   ];
 
@@ -431,6 +433,7 @@ export default function Settings() {
           </div>
 
           {/* TAB: Permissões */}
+          
           {tab === "permissions" && (
             <div className="anim-fade">
               <div
@@ -700,6 +703,9 @@ export default function Settings() {
               </div>
             </div>
           )}
+
+          {/* TAB: Distribuição de tickets */}
+          {tab === "assignment" && <AssignmentSettings t={t} dark={dark} />}
 
           {/* TAB: Usuários */}
           {tab === "users" && (

@@ -19,6 +19,7 @@ const userRoutes = require("./routes/user.routes");
 const settingsRoutes = require("./routes/settings.routes");
 const chatRoutes = require("./routes/chat.routes");
 const notificationRoutes = require("./routes/notification.routes");
+const assignmentRoutes = require("./routes/assignment.routes");
 const { protect, requireRole } = require("./middlewares/auth.middleware");
 const { allowedOrigins } = require("./config/corsOrigins");
 const initSocket = require("./socket");
@@ -75,6 +76,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/assignment", assignmentRoutes);
 
 app.get('/api/clear-all-cache', protect, requireRole('SUPERADMIN'), async (req, res) => {
   try {

@@ -1,9 +1,13 @@
 import { useState } from "react";
+import axios from "axios";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useMe } from "../../contexts/MeContext";
 import { useSocket } from "../../contexts/SocketContext";
+
+
+const API = import.meta.env.VITE_API_URL;
 
 const links = [
   {
@@ -39,6 +43,29 @@ export default function Sidebar() {
   const [hoveredPath, setHoveredPath] = useState(null);
 
   const dbRole = me?.role;
+
+
+  // Agente pode ficar "ausente": sai da fila da distribuição automática de tickets
+  const [availabilityOverride, setAvailabilityOverride] = useState(null);
+  const [savingAvailability, setSavingAvailability] = useState(false);
+  const available = availabilityOverride ?? me?.available ?? true;
+
+  const handleToggleAvailability = async () => {
+    const next = !available;
+    setSavingAvailability(true);
+    try {
+      await axios.patch(
+        `${API}/assignment/availability`,
+        { available: next },
+        { headers: { Authorization: `Bearer ${localStorage.getItem("helpdesk_token")}` } },
+      );
+      setAvailabilityOverride(next);
+    } catch {
+      // mantém o estado anterior se o servidor recusar
+    } finally {
+      setSavingAvailability(false);
+    }
+  };
 
   const bg = dark ? "#0f0f0f" : "#ffffff";
   const border = dark ? "#1f1f1f" : "#e5e7eb";
@@ -338,7 +365,7 @@ export default function Sidebar() {
                 width: 9,
                 height: 9,
                 borderRadius: "50%",
-                background: "#16a34a",
+                background: dbRole === "AGENT" && !available ? "#9ca3af" : "#16a34a",
                 border: `2px solid ${dark ? "#161616" : "#f8fafc"}`,
               }}
             />
@@ -370,6 +397,59 @@ export default function Sidebar() {
             </span>
           </div>
         </div>
+
+        {dbRole === "AGENT" && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 10px",
+              marginBottom: 8,
+              border: `1px solid ${border}`,
+              borderRadius: 8,
+              fontSize: 11,
+              color: sec,
+            }}
+          >
+            <span style={{ flex: 1, lineHeight: 1.3 }}>
+              {available ? "Disponível para novos tickets" : "Ausente: sem novos tickets"}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={available}
+              aria-label="Disponível para receber novos tickets"
+              onClick={handleToggleAvailability}
+              disabled={savingAvailability}
+              style={{
+                width: 34,
+                height: 20,
+                borderRadius: 99,
+                background: available ? "#16a34a" : "#d1d5db",
+                border: "none",
+                cursor: savingAvailability ? "wait" : "pointer",
+                position: "relative",
+                flexShrink: 0,
+                transition: "background 0.2s",
+              }}
+            >
+              <div
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: "50%",
+                  background: "#fff",
+                  position: "absolute",
+                  top: 3,
+                  left: available ? 17 : 3,
+                  transition: "left 0.2s",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                }}
+              />
+            </button>
+          </div>
+        )}
 
         <button
           onClick={handleLogout}

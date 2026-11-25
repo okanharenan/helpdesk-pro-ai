@@ -25,6 +25,7 @@ model User {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   active           Boolean   @default(true)
+  available        Boolean   @default(true)
 }
 
 model Ticket {
@@ -120,4 +121,14 @@ model Notification {
 
   @@index([userId, readAt])
   @@index([userId, createdAt])
+}
+
+// Configuração da distribuição automática de tickets (sempre uma única linha, id = 1)
+model AssignmentSettings {
+  id             Int      @id @default(1)
+  // SUPERADMIN | ROUND_ROBIN | LEAST_LOADED
+  mode           String   @default("SUPERADMIN")
+  // Último agente que recebeu ticket (ponto de partida do rodízio)
+  lastAssignedId Int?
+  updatedAt      DateTime @updatedAt
 }

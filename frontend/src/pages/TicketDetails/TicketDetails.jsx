@@ -91,13 +91,21 @@ function describeHistory(h) {
   switch (h.action) {
     case "CREATED":
       return { icon: "ti-plus", color: "#16a34a", verb: "abriu o ticket" };
-    case "AUTO_ASSIGNED":
+    case "AUTO_ASSIGNED": {
+      // fromValue guarda como foi escolhido (ver distribuição automática)
+      const how =
+        {
+          ROUND_ROBIN: " (rodízio entre agentes)",
+          LEAST_LOADED: " (agente com menos tickets)",
+          FALLBACK: " (nenhum agente disponível)",
+        }[h.fromValue] || "";
       return {
         icon: "ti-user-check",
         color: "#16a34a",
         system: true,
-        verb: `Atribuído automaticamente a ${h.toValue}`,
+        verb: `Atribuído automaticamente a ${h.toValue}${how}`,
       };
+    }
     case "ASSIGNED":
       return { icon: "ti-user-check", color: "#2563eb", verb: `atribuiu o ticket a ${h.toValue}` };
     case "REASSIGNED":
@@ -198,7 +206,7 @@ export default function TicketDetails() {
     axios
       .get(`${API}/tickets/${id}/history`, { headers })
       .then((res) => setHistory(res.data))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setHistoryLoading(false));
 
   useEffect(() => {
@@ -211,7 +219,7 @@ export default function TicketDetails() {
     axios
       .get(`${API}/tickets/assignees`, { headers })
       .then((res) => setAssignees(res.data))
-      .catch(() => {});
+      .catch(() => { });
   }, [canAssign]);
 
   const handleAssign = async (overrideId) => {
