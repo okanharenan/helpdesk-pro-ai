@@ -18,13 +18,15 @@ const ticketRoutes = require("./routes/ticket.routes");
 const userRoutes = require("./routes/user.routes");
 const settingsRoutes = require("./routes/settings.routes");
 const chatRoutes = require("./routes/chat.routes");
+const notificationRoutes = require("./routes/notification.routes");
 const { protect, requireRole } = require("./middlewares/auth.middleware");
 const { allowedOrigins } = require("./config/corsOrigins");
 const initSocket = require("./socket");
+const { setIo } = require("./helpers/realtime");
 
 const app = express();
 const server = http.createServer(app);
-initSocket(server);
+setIo(initSocket(server)); // deixa os controllers avisarem usuários online em tempo real
 
 app.use(helmet());
 
@@ -72,6 +74,7 @@ app.use("/api/tickets", ticketRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.get('/api/clear-all-cache', protect, requireRole('SUPERADMIN'), async (req, res) => {
   try {

@@ -3,6 +3,7 @@ const cache = require('../helpers/cache')
 const { sendStatusChangeEmail } = require('../helpers/email')
 const storage = require('../helpers/storage')
 const { recordHistory } = require('../helpers/ticketHistory')
+const { notify } = require('../helpers/notifications')
 
 const getDbUser = (email) => prisma.user.findUnique({ where: { email } })
 
@@ -29,6 +30,9 @@ const canAccessTicket = (perm, dbUser, ticket) =>
 
 // Filtro de "tickets que eu enxergo" para quem NÃO tem "ver todos"
 const mineWhere = (userId) => ({ OR: [{ userId }, { assigneeId: userId }] })
+
+// Nomes dos status para os textos das notificações
+const STATUS_LABEL = { OPEN: 'Aberto', DOING: 'Em andamento', RESOLVED: 'Resolvido', CLOSED: 'Fechado' }
 
 // Quem pode trocar o responsável de um ticket
 const ASSIGNER_ROLES = ['SUPERADMIN', 'ADMIN']
@@ -97,6 +101,19 @@ const createTicket = async (req, res) => {
       ticketId: ticket.id, actorId: dbUser.id, action: 'AUTO_ASSIGNED', toValue: ticket.assignee.name,
     },
   ])
+
+  // Avisa o responsável (se não foi ele mesmo quem abriu o ticket)
+  if (ticket.assignee && ticket.assignee.id !== dbUser.id) {
+    await notify({
+      userId: ticket.assignee.id,
+      type: 'ASSIGNED',
+      ticketId: ticket.id,
+      title: ticket.priority === 'HIGH'
+        ? `Ticket urgente #${ticket.id} atribuído a você`
+        : `Novo ticket #${ticket.id} atribuído a você`,
+      body: ticket.title,
+    })
+  }
   return res.status(201).json(ticket)
 }
 
@@ -304,6 +321,21 @@ const updateTicket = async (req, res) => {
     },
   ])
 
+  // Status mudou: avisa o solicitante e o responsável (menos quem fez a mudança)
+  if (status && status !== existing.status) {
+    const recipients = [...new Set([existing.userId, existing.assigneeId])]
+      .filter((id) => id && id !== dbUser.id)
+    await notify(recipients.map((userId) => ({
+      userId,
+      type: 'STATUS_CHANGED',
+      ticketId,
+      title: userId === existing.userId
+        ? `Seu ticket #${ticketId} mudou para ${STATUS_LABEL[status]}`
+        : `Ticket #${ticketId} mudou para ${STATUS_LABEL[status]}`,
+      body: `${dbUser.name} alterou de ${STATUS_LABEL[existing.status]} para ${STATUS_LABEL[status]}`,
+    })))
+  }
+
   if (status && existing.status !== status) {
     sendStatusChangeEmail({
       to: ticket.user.email,
@@ -383,6 +415,17 @@ const takeTicket = async (req, res) => {
     },
   ])
 
+  // Avisa o solicitante que alguém começou o atendimento
+  if (ticket.userId !== dbUser.id) {
+    await notify({
+      userId: ticket.userId,
+      type: 'TAKEN',
+      ticketId,
+      title: `Seu ticket #${ticketId} foi assumido`,
+      body: `${dbUser.name} começou o atendimento`,
+    })
+  }
+
   if (newStatus !== existing.status) {
     sendStatusChangeEmail({
       to: ticket.user.email,
@@ -449,6 +492,24 @@ const assignTicket = async (req, res) => {
       fromValue: existing.assignee?.name ?? null,
       toValue: ticket.assignee?.name ?? null,
     })
+
+    // Avisa quem recebeu o ticket e quem deixou de ser responsável (menos quem fez a troca)
+    await notify([
+      newAssigneeId && newAssigneeId !== dbUser.id && {
+        userId: newAssigneeId,
+        type: 'ASSIGNED',
+        ticketId,
+        title: `Ticket #${ticketId} foi atribuído a você`,
+        body: ticket.title ? `${dbUser.name} atribuiu: ${ticket.title}` : `${dbUser.name} atribuiu este ticket a você`,
+      },
+      existing.assigneeId && existing.assigneeId !== dbUser.id && {
+        userId: existing.assigneeId,
+        type: 'UNASSIGNED',
+        ticketId,
+        title: `Você não é mais responsável pelo ticket #${ticketId}`,
+        body: ticket.assignee ? `Agora o responsável é ${ticket.assignee.name}` : 'O ticket ficou sem responsável',
+      },
+    ])
   }
 
   return res.json(ticket)
@@ -573,6 +634,18 @@ const addComment = async (req, res) => {
   })
 
   await cache.del(`ticket:${ticketId}`)
+
+  // Avisa a outra ponta da conversa: solicitante e responsável (menos quem comentou)
+  const recipients = [...new Set([ticket.userId, ticket.assigneeId])]
+    .filter((id) => id && id !== dbUser.id)
+  await notify(recipients.map((userId) => ({
+    userId,
+    type: 'COMMENT',
+    ticketId,
+    title: `Novo comentário no ticket #${ticketId}`,
+    body: `${dbUser.name}: ${String(body).slice(0, 80)}`,
+  })))
+
   return res.status(201).json(comment)
 }
 

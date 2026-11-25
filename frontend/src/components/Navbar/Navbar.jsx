@@ -1,10 +1,20 @@
 import { useNavigate } from 'react-router-dom'
 import { useTheme } from '../../contexts/ThemeContext'
-import { useMe } from '../../contexts/MeContext'
+import { useSocket } from '../../contexts/SocketContext'
 import { useState, useEffect, useRef } from 'react'
-import axios from 'axios'
 
-const API = import.meta.env.VITE_API_URL
+// Ícone e cor de cada tipo de notificação
+const TYPE_META = {
+  ASSIGNED:       { icon: 'ti-user-check',      color: '#16a34a' },
+  UNASSIGNED:     { icon: 'ti-user-minus',      color: '#6b7280' },
+  TAKEN:          { icon: 'ti-hand-grab',       color: '#2563eb' },
+  STATUS_CHANGED: { icon: 'ti-refresh',         color: '#2563eb' },
+  COMMENT:        { icon: 'ti-message-circle',  color: '#7c3aed' },
+}
+const metaFor = n =>
+  n.title?.includes('urgente')
+    ? { icon: 'ti-alert-triangle', color: '#dc2626' }
+    : TYPE_META[n.type] || { icon: 'ti-bell', color: '#6b7280' }
 
 function timeAgo(date) {
   const diff = (Date.now() - new Date(date)) / 1000
@@ -19,12 +29,17 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
   const navigate = useNavigate()
   const [showNotif, setShowNotif] = useState(false)
   const [search, setSearch] = useState('')
-  const [tickets, setTickets] = useState([])
-  const [seen, setSeen] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('notif_seen') || '[]') } catch { return [] }
-  })
   const notifRef = useRef(null)
-  const { me } = useMe() || {}
+  // Notificações vêm do servidor (ver SocketContext) e chegam em tempo real
+  const {
+    notifications = [],
+    notifUnread = 0,
+    refreshNotifications,
+    markNotificationRead,
+    markAllNotificationsRead,
+    toast,
+    dismissToast,
+  } = useSocket() || {}
   const [tab, setTab] = useState('ALL')          // 'ALL' | 'UNREAD'
   const [justMarked, setJustMarked] = useState(false) // feedback ao marcar tudo como lido
 
@@ -35,16 +50,6 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
   const sec     = dark ? '#c0c0c0' : '#374151'
   const inputBg = dark ? '#1a1a1a' : '#f9fafb'
 
-  const token = localStorage.getItem('helpdesk_token')
-
-  // Busca tickets reais
-  useEffect(() => {
-    if (!token) return
-    axios.get(`${API}/tickets`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => setTickets(res.data))
-      .catch(() => {})
-  }, [])
-
   // Fecha ao clicar fora
   useEffect(() => {
     const handler = e => {
@@ -54,110 +59,64 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // Gera notificações reais dos tickets
-  const notifs = []
-
-  // Tickets atribuídos a mim (abertos ou em andamento)
-  if (me?.id) {
-    tickets
-      .filter(tk => tk.assigneeId === me.id && ['OPEN', 'DOING'].includes(tk.status))
-      .slice(0, 3)
-      .forEach(tk => notifs.push({
-        id: `assigned-${tk.id}`,
-        ticketId: tk.id,
-        icon: 'ti-user-check',
-        color: '#16a34a',
-        title: `Ticket #${tk.id} sob sua responsabilidade`,
-        msg: tk.title,
-        time: timeAgo(tk.updatedAt || tk.createdAt),
-      }))
-  }
-
-  // Urgentes abertos
-  tickets
-    .filter(tk => tk.priority === 'HIGH' && tk.status === 'OPEN')
-    .slice(0, 2)
-    .forEach(tk => notifs.push({
-      id: `urgent-${tk.id}`,
-      ticketId: tk.id,
-      icon: 'ti-alert-triangle',
-      color: '#dc2626',
-      bg: dark ? 'rgba(239,68,68,0.06)' : '#fff5f5',
-      leftBorder: '#dc2626',
-      title: `Ticket #${tk.id} — urgente`,
-      msg: tk.title,
-      time: timeAgo(tk.createdAt),
-    }))
-
-  // Em andamento recentes (últimas 24h)
-  tickets
-    .filter(tk => tk.status === 'DOING' && (Date.now() - new Date(tk.createdAt)) < 86400000)
-    .slice(0, 2)
-    .forEach(tk => notifs.push({
-      id: `doing-${tk.id}`,
-      ticketId: tk.id,
-      icon: 'ti-loader',
-      color: '#2563eb',
-      bg: 'transparent',
-      leftBorder: 'transparent',
-      title: `Ticket #${tk.id} em andamento`,
-      msg: tk.title,
-      time: timeAgo(tk.createdAt),
-    }))
-
-  // Resolvidos recentes (últimas 6h)
-  tickets
-    .filter(tk => tk.status === 'RESOLVED' && (Date.now() - new Date(tk.createdAt)) < 21600000)
-    .slice(0, 1)
-    .forEach(tk => notifs.push({
-      id: `resolved-${tk.id}`,
-      ticketId: tk.id,
-      icon: 'ti-circle-check',
-      color: '#16a34a',
-      bg: 'transparent',
-      leftBorder: 'transparent',
-      title: `Ticket #${tk.id} resolvido`,
-      msg: tk.title,
-      time: timeAgo(tk.createdAt),
-    }))
-
-  const isRead = n => seen.includes(n.id)
-  const unread = notifs.filter(n => !isRead(n)).length
+  const notifs = notifications
+  const isRead = n => !!n.readAt
+  const unread = notifUnread
+  const unreadLoaded = notifs.filter(n => !isRead(n)).length
   const allRead = notifs.length > 0 && unread === 0
   const visibleNotifs = tab === 'UNREAD' ? notifs.filter(n => !isRead(n)) : notifs
 
-  // Guarda os ids lidos (mantém os antigos, limita o tamanho para não crescer sem fim)
-  const persistSeen = ids => {
-    const merged = [...new Set([...seen, ...ids])].slice(-200)
-    setSeen(merged)
-    try { localStorage.setItem('notif_seen', JSON.stringify(merged)) } catch { /* storage indisponível */ }
-  }
-
-  // Abrir o sino NÃO marca nada como lido: a pessoa decide o que já viu
+  // Ao abrir o sino, busca de novo (garante a lista atualizada). Abrir NÃO marca nada como lido.
   const handleOpenNotif = () => {
+    if (!showNotif) refreshNotifications?.()
     setShowNotif(v => !v)
     setJustMarked(false)
   }
 
   const handleMarkOneRead = (e, id) => {
     e.stopPropagation()
-    persistSeen([id])
+    markNotificationRead?.(id)
   }
 
   const handleMarkAllRead = () => {
-    persistSeen(notifs.map(n => n.id))
+    markAllNotificationsRead?.()
     setJustMarked(true)
     setTimeout(() => setJustMarked(false), 2500)
   }
 
   const handleOpenTicket = n => {
-    persistSeen([n.id])
-    navigate(`/tickets/${n.ticketId}`)
+    markNotificationRead?.(n.id)
+    if (n.ticketId) navigate(`/tickets/${n.ticketId}`)
     setShowNotif(false)
+  }
+
+  const handleOpenToast = () => {
+    if (!toast) return
+    markNotificationRead?.(toast.id)
+    if (toast.ticketId) navigate(`/tickets/${toast.ticketId}`)
+    dismissToast?.()
   }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', background: bg, borderBottom: `1px solid ${border}`, fontFamily: "'Inter', system-ui, sans-serif", flexShrink: 0, boxShadow: dark ? 'none' : '0 1px 3px rgba(0,0,0,0.04)' }}>
+
+      {/* Aviso flutuante de notificação nova (tempo real) */}
+      {toast && (
+        <div role="status" className="anim-slide" onClick={handleOpenToast}
+          style={{ position: 'fixed', top: 68, right: 20, zIndex: 1000, width: 320, maxWidth: 'calc(100vw - 40px)', display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 14px', background: bg, border: `1px solid ${border}`, borderLeft: `3px solid ${metaFor(toast).color}`, borderRadius: 10, boxShadow: dark ? '0 8px 24px rgba(0,0,0,0.5)' : '0 8px 24px rgba(0,0,0,0.12)', cursor: 'pointer' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: `${metaFor(toast).color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <i className={`ti ${metaFor(toast).icon}`} style={{ fontSize: 15, color: metaFor(toast).color }} aria-hidden="true" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: text, marginBottom: 2 }}>{toast.title}</div>
+            {toast.body && <div style={{ fontSize: 11, color: muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toast.body}</div>}
+          </div>
+          <button onClick={e => { e.stopPropagation(); dismissToast?.() }} aria-label="Fechar aviso"
+            style={{ background: 'none', border: 'none', color: muted, cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Título */}
       <div>
@@ -242,7 +201,7 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
                 <div style={{ display: 'flex', gap: 4, padding: '8px 12px', borderBottom: `1px solid ${border}` }}>
                   {[
                     { key: 'ALL', label: 'Todas', count: notifs.length },
-                    { key: 'UNREAD', label: 'Não lidas', count: unread },
+                    { key: 'UNREAD', label: 'Não lidas', count: unreadLoaded },
                   ].map(tb => {
                     const active = tab === tb.key
                     return (
@@ -272,6 +231,7 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
                 <div style={{ maxHeight: 360, overflowY: 'auto' }}>
                   {visibleNotifs.map((n, i) => {
                     const read = isRead(n)
+                    const meta = metaFor(n)
                     const rowBg = read ? 'transparent' : (dark ? 'rgba(22,163,74,0.07)' : '#f0fdf4')
                     const hoverBg = dark ? '#1a1a1a' : '#f9fafb'
                     return (
@@ -280,19 +240,19 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
                         style={{ display: 'flex', gap: 12, padding: '12px 16px', borderBottom: i < visibleNotifs.length - 1 ? `1px solid ${border}` : 'none', cursor: 'pointer', background: rowBg, transition: 'background 0.12s', borderLeft: `3px solid ${read ? 'transparent' : '#16a34a'}` }}
                         onMouseEnter={e => e.currentTarget.style.background = hoverBg}
                         onMouseLeave={e => e.currentTarget.style.background = rowBg}>
-                        <div style={{ width: 32, height: 32, borderRadius: 8, background: read ? (dark ? '#1f1f1f' : '#f3f4f6') : `${n.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1, opacity: read ? 0.7 : 1 }}>
-                          <i className={`ti ${n.icon}`} style={{ fontSize: 15, color: read ? muted : n.color }} aria-hidden="true" />
+                        <div style={{ width: 32, height: 32, borderRadius: 8, background: read ? (dark ? '#1f1f1f' : '#f3f4f6') : `${meta.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1, opacity: read ? 0.7 : 1 }}>
+                          <i className={`ti ${meta.icon}`} style={{ fontSize: 15, color: read ? muted : meta.color }} aria-hidden="true" />
                         </div>
                         <div style={{ flex: 1, minWidth: 0, opacity: read ? 0.65 : 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                             <span style={{ fontSize: 12, fontWeight: read ? 400 : 700, color: read ? sec : text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{n.title}</span>
                             {!read && <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#16a34a', flexShrink: 0 }} />}
                           </div>
-                          <div style={{ fontSize: 11, color: muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.msg}</div>
+                          <div style={{ fontSize: 11, color: muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.body}</div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
                           <span style={{ fontSize: 10, color: muted, background: dark ? '#1f1f1f' : '#f3f4f6', padding: '2px 7px', borderRadius: 99, border: `1px solid ${border}`, height: 'fit-content' }}>
-                            {n.time}
+                            {timeAgo(n.createdAt)}
                           </span>
                           {read ? (
                             <span title="Lida" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#16a34a', fontWeight: 500 }}>
