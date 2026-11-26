@@ -25,6 +25,7 @@ model User {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   active           Boolean   @default(true)
+  // Disponível para receber tickets na distribuição automática (agente ausente = false)
   available        Boolean   @default(true)
 }
 
@@ -71,6 +72,8 @@ model Comment {
   ticket    Ticket   @relation(fields: [ticketId], references: [id])
   userId    Int
   user      User     @relation(fields: [userId], references: [id])
+  // Nota interna: só a equipe (qualquer papel diferente de CLIENT) enxerga
+  internal  Boolean  @default(false)
   createdAt DateTime @default(now())
 }
 

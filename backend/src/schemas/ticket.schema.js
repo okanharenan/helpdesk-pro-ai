@@ -13,8 +13,10 @@ const updateTicketSchema = z.object({
   priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
 });
 
+// internal = nota interna (só a equipe vê). Se não vier, o comentário é público.
 const addCommentSchema = z.object({
   body: z.string().trim().min(1, "comentário não pode ser vazio").max(3000),
+  internal: z.boolean().optional().default(false),
 });
 
 // assigneeId = número (novo responsável) ou null (deixar sem responsável)

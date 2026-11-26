@@ -153,6 +153,9 @@ export default function TicketDetails() {
   const [sending, setSending] = useState(false);
   const [updating, setUpdating] = useState(null);
   const [commentFocused, setCommentFocused] = useState(false);
+  // Nota interna: só a equipe vê (o servidor também garante isso)
+  const [internalNote, setInternalNote] = useState(false);
+  const [commentError, setCommentError] = useState("");
   const [openingAttachment, setOpeningAttachment] = useState(false);
   const [attachmentError, setAttachmentError] = useState("");
   const [assignees, setAssignees] = useState([]);
@@ -171,6 +174,8 @@ export default function TicketDetails() {
   const canDelete = !!perm?.canDeleteTicket;
   // SUPERADMIN e ADMIN podem trocar o responsável pelo ticket
   const canAssign = dbRole === "SUPERADMIN" || dbRole === "ADMIN";
+  // Equipe (qualquer papel diferente de cliente) pode escrever e ler notas internas
+  const isStaff = !!dbRole && dbRole !== "CLIENT";
 
   const openAttachment = async () => {
     setAttachmentError("");
@@ -206,7 +211,7 @@ export default function TicketDetails() {
     axios
       .get(`${API}/tickets/${id}/history`, { headers })
       .then((res) => setHistory(res.data))
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => setHistoryLoading(false));
 
   useEffect(() => {
@@ -219,7 +224,7 @@ export default function TicketDetails() {
     axios
       .get(`${API}/tickets/assignees`, { headers })
       .then((res) => setAssignees(res.data))
-      .catch(() => { });
+      .catch(() => {});
   }, [canAssign]);
 
   const handleAssign = async (overrideId) => {
@@ -289,14 +294,17 @@ export default function TicketDetails() {
     e.preventDefault();
     if (!comment.trim()) return;
     setSending(true);
+    setCommentError("");
     try {
       const { data } = await axios.post(
         `${API}/tickets/${id}/comments`,
-        { body: comment },
+        { body: comment, internal: isStaff && internalNote },
         { headers },
       );
       setTicket((p) => ({ ...p, comments: [...p.comments, data] }));
       setComment("");
+    } catch (err) {
+      setCommentError(err.response?.data?.message || "Não foi possível enviar o comentário.");
     } finally {
       setSending(false);
     }
@@ -1076,6 +1084,7 @@ export default function TicketDetails() {
                   ) : (
                     ticket.comments.map((c, i) => {
                       const isAgent = c.user.role !== "CLIENT";
+                      const isInternal = !!c.internal;
                       const rs = ROLE_COLOR[c.user.role] || ROLE_COLOR.CLIENT;
                       const initials =
                         c.user.name
@@ -1089,19 +1098,31 @@ export default function TicketDetails() {
                           key={c.id}
                           className={`anim-fade anim-d${Math.min(i + 1, 5)}`}
                           style={{
-                            background: isAgent
+                            background: isInternal
                               ? dark
-                                ? "rgba(22,163,74,0.05)"
-                                : "#f0fdf4"
-                              : dark
-                                ? "rgba(255,255,255,0.03)"
-                                : "#f9fafb",
-                            border: `1px solid ${isAgent ? (dark ? "rgba(22,163,74,0.15)" : "#bbf7d0") : t.border}`,
+                                ? "rgba(217,119,6,0.08)"
+                                : "#fffbeb"
+                              : isAgent
+                                ? dark
+                                  ? "rgba(22,163,74,0.05)"
+                                  : "#f0fdf4"
+                                : dark
+                                  ? "rgba(255,255,255,0.03)"
+                                  : "#f9fafb",
+                            border: `1px solid ${
+                              isInternal
+                                ? dark ? "rgba(217,119,6,0.3)" : "#fde68a"
+                                : isAgent
+                                  ? dark ? "rgba(22,163,74,0.15)" : "#bbf7d0"
+                                  : t.border
+                            }`,
                             borderRadius: 11,
                             padding: "14px 16px",
-                            borderLeft: isAgent
-                              ? `3px solid ${dark ? "rgba(22,163,74,0.4)" : "#16a34a"}`
-                              : `3px solid transparent`,
+                            borderLeft: isInternal
+                              ? "3px solid #d97706"
+                              : isAgent
+                                ? `3px solid ${dark ? "rgba(22,163,74,0.4)" : "#16a34a"}`
+                                : `3px solid transparent`,
                           }}
                         >
                           <div
@@ -1159,6 +1180,25 @@ export default function TicketDetails() {
                                 >
                                   {rs.label}
                                 </span>
+                                {isInternal && (
+                                  <span
+                                    title="Só a equipe enxerga esta nota"
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 4,
+                                      fontSize: 10,
+                                      padding: "2px 8px",
+                                      borderRadius: 99,
+                                      background: dark ? "rgba(217,119,6,0.18)" : "#fef3c7",
+                                      color: "#b45309",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    <i className="ti ti-lock" style={{ fontSize: 11 }} aria-hidden="true" />
+                                    Nota interna
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <span
@@ -1194,6 +1234,74 @@ export default function TicketDetails() {
                   onSubmit={handleComment}
                   style={{ borderTop: `1px solid ${t.border}`, paddingTop: 14 }}
                 >
+                  {isStaff && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div
+                        role="group"
+                        aria-label="Tipo de comentário"
+                        style={{
+                          display: "inline-flex",
+                          padding: 3,
+                          gap: 3,
+                          borderRadius: 10,
+                          background: dark ? "#1a1a1a" : "#f3f4f6",
+                          border: `1px solid ${t.border}`,
+                        }}
+                      >
+                        {[
+                          { key: false, label: "Resposta ao solicitante", icon: "ti-message", color: "#16a34a" },
+                          { key: true, label: "Nota interna", icon: "ti-lock", color: "#d97706" },
+                        ].map((opt) => {
+                          const active = internalNote === opt.key;
+                          return (
+                            <button
+                              key={String(opt.key)}
+                              type="button"
+                              aria-pressed={active}
+                              onClick={() => setInternalNote(opt.key)}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: "6px 12px",
+                                borderRadius: 8,
+                                border: "none",
+                                fontSize: 12,
+                                fontWeight: active ? 600 : 500,
+                                fontFamily: "inherit",
+                                cursor: "pointer",
+                                color: active ? opt.color : t.textMuted,
+                                background: active ? (dark ? "#262626" : "#ffffff") : "transparent",
+                                boxShadow: active && !dark ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                              }}
+                            >
+                              <i className={`ti ${opt.icon}`} style={{ fontSize: 14 }} aria-hidden="true" />
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 11,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 5,
+                          color: internalNote ? "#b45309" : t.textMuted,
+                        }}
+                      >
+                        <i
+                          className={`ti ${internalNote ? "ti-eye-off" : "ti-eye"}`}
+                          style={{ fontSize: 13 }}
+                          aria-hidden="true"
+                        />
+                        {internalNote
+                          ? "Só a equipe vai ver esta nota. O solicitante não é avisado."
+                          : "O solicitante vai ver este comentário."}
+                      </div>
+                    </div>
+                  )}
                   <div style={{ position: "relative" }}>
                     <textarea
                       value={comment}
@@ -1202,11 +1310,19 @@ export default function TicketDetails() {
                       onBlur={() => setCommentFocused(false)}
                       rows={3}
                       required
-                      placeholder="Escreva um comentário..."
+                      placeholder={
+                        isStaff && internalNote
+                          ? "Escreva uma nota interna (o solicitante não vê)..."
+                          : "Escreva um comentário..."
+                      }
                       style={{
                         width: "100%",
                         background: t.inputBg,
-                        border: `1.5px solid ${commentFocused ? "#16a34a" : t.border}`,
+                        border: `1.5px solid ${
+                          isStaff && internalNote
+                            ? commentFocused ? "#d97706" : dark ? "rgba(217,119,6,0.45)" : "#fcd34d"
+                            : commentFocused ? "#16a34a" : t.border
+                        }`,
                         borderRadius: 10,
                         padding: "12px 14px",
                         fontSize: 13,
@@ -1241,7 +1357,9 @@ export default function TicketDetails() {
                         background:
                           sending || !comment.trim()
                             ? t.border
-                            : "linear-gradient(135deg,#16a34a,#22c55e)",
+                            : isStaff && internalNote
+                              ? "linear-gradient(135deg,#d97706,#f59e0b)"
+                              : "linear-gradient(135deg,#16a34a,#22c55e)",
                         border: "none",
                         borderRadius: 9,
                         fontSize: 13,
@@ -1256,17 +1374,39 @@ export default function TicketDetails() {
                         boxShadow:
                           sending || !comment.trim()
                             ? "none"
-                            : "0 2px 8px rgba(22,163,74,0.3)",
+                            : isStaff && internalNote
+                              ? "0 2px 8px rgba(217,119,6,0.3)"
+                              : "0 2px 8px rgba(22,163,74,0.3)",
                       }}
                     >
                       <i
-                        className={`ti ${sending ? "ti-loader-2 anim-spin" : "ti-send"}`}
+                        className={`ti ${sending ? "ti-loader-2 anim-spin" : isStaff && internalNote ? "ti-lock" : "ti-send"}`}
                         style={{ fontSize: 14 }}
                         aria-hidden="true"
                       />
-                      {sending ? "Enviando..." : "Enviar comentário"}
+                      {sending
+                        ? "Enviando..."
+                        : isStaff && internalNote
+                          ? "Salvar nota interna"
+                          : "Enviar comentário"}
                     </button>
                   </div>
+                  {commentError && (
+                    <div
+                      role="alert"
+                      style={{
+                        marginTop: 10,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        fontSize: 12,
+                        color: "#dc2626",
+                      }}
+                    >
+                      <i className="ti ti-alert-circle" style={{ fontSize: 14 }} aria-hidden="true" />
+                      {commentError}
+                    </div>
+                  )}
                 </form>
               </div>
             </div>
