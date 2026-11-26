@@ -614,6 +614,105 @@ const assignTicket = async (req, res) => {
   return res.json(ticket);
 };
 
+// Atribui vários tickets de uma vez (SUPERADMIN e ADMIN). assigneeId = null deixa todos sem responsável.
+// Tickets que já estão com a pessoa escolhida são ignorados; quem não tem "ver todos" só mexe nos seus.
+const bulkAssignTickets = async (req, res) => {
+  const dbUser = await getDbUser(req.user.email)
+  if (!dbUser) return res.status(404).json({ message: 'Usuário não encontrado' })
+
+  if (!ASSIGNER_ROLES.includes(dbUser.role)) {
+    return res.status(403).json({ message: 'Apenas SUPERADMIN e ADMIN podem trocar o responsável' })
+  }
+
+  const ids = [...new Set(req.body.ticketIds)]
+  const { assigneeId } = req.body
+  let target = null
+
+  if (assigneeId !== null && assigneeId !== undefined) {
+    target = await prisma.user.findUnique({ where: { id: Number(assigneeId) } })
+    if (!target || target.active === false) {
+      return res.status(400).json({ message: 'Usuário não encontrado ou desativado' })
+    }
+    if (target.role === 'CLIENT') {
+      return res.status(400).json({ message: 'Clientes não podem ser responsáveis por chamados' })
+    }
+  }
+  const newAssigneeId = target ? target.id : null
+
+  const perm = await getPermission(dbUser.role)
+  const tickets = await prisma.ticket.findMany({
+    where: { id: { in: ids }, ...(perm?.canViewAllTickets ? {} : mineWhere(dbUser.id)) },
+    select: {
+      id: true, userId: true, assigneeId: true,
+      assignee: { select: ASSIGNEE_SELECT },
+    },
+  })
+
+  const changing = tickets.filter((tk) => (tk.assigneeId ?? null) !== newAssigneeId)
+  const result = {
+    updated: changing.length,
+    unchanged: tickets.length - changing.length,
+    notFound: ids.length - tickets.length, // não existem ou a pessoa não tem acesso
+    assignee: target ? { id: target.id, name: target.name, role: target.role } : null,
+  }
+  if (!changing.length) return res.json(result)
+
+  const changingIds = changing.map((tk) => tk.id)
+  await prisma.ticket.updateMany({ where: { id: { in: changingIds } }, data: { assigneeId: newAssigneeId } })
+
+  await cache.del(...changingIds.map((id) => `ticket:${id}`))
+  await invalidateLists(...changing.flatMap((tk) => [tk.userId, tk.assigneeId]), newAssigneeId)
+
+  await recordHistory(changing.map((tk) => ({
+    ticketId: tk.id,
+    actorId: dbUser.id,
+    action: newAssigneeId === null ? 'UNASSIGNED' : tk.assigneeId ? 'REASSIGNED' : 'ASSIGNED',
+    fromValue: tk.assignee?.name ?? null,
+    toValue: target?.name ?? null,
+  })))
+
+  // Um aviso por pessoa (não um por ticket), para não encher o sino
+  const n = changing.length
+  const single = changing[0]
+  const notifications = []
+
+  if (newAssigneeId && newAssigneeId !== dbUser.id) {
+    notifications.push(n === 1
+      ? {
+          userId: newAssigneeId, type: 'ASSIGNED', ticketId: single.id,
+          title: `Ticket #${single.id} foi atribuído a você`,
+          body: `${dbUser.name} atribuiu este ticket a você`,
+        }
+      : {
+          userId: newAssigneeId, type: 'ASSIGNED',
+          title: `${n} tickets foram atribuídos a você`,
+          body: `${dbUser.name} atribuiu vários tickets a você`,
+        })
+  }
+
+  const lostBy = new Map() // responsável antigo -> tickets que ele deixou de ter
+  for (const tk of changing) {
+    if (!tk.assigneeId || tk.assigneeId === dbUser.id || tk.assigneeId === newAssigneeId) continue
+    lostBy.set(tk.assigneeId, [...(lostBy.get(tk.assigneeId) || []), tk.id])
+  }
+  for (const [userId, lostIds] of lostBy) {
+    notifications.push(lostIds.length === 1
+      ? {
+          userId, type: 'UNASSIGNED', ticketId: lostIds[0],
+          title: `Você não é mais responsável pelo ticket #${lostIds[0]}`,
+          body: target ? `Agora o responsável é ${target.name}` : 'O ticket ficou sem responsável',
+        }
+      : {
+          userId, type: 'UNASSIGNED',
+          title: `Você não é mais responsável por ${lostIds.length} tickets`,
+          body: target ? `Agora com ${target.name}` : 'Os tickets ficaram sem responsável',
+        })
+  }
+  await notify(notifications)
+
+  return res.json(result)
+}
+
 // Lista de pessoas que podem ser responsáveis (equipe ativa, sem clientes) — para o seletor de SUPERADMIN/ADMIN
 const getAssignableUsers = async (req, res) => {
   const dbUser = await getDbUser(req.user.email);
@@ -793,4 +892,6 @@ module.exports = {
   assignTicket,
   getAssignableUsers,
   getTicketHistory,
+  getTicketHistory,
+  bulkAssignTickets,
 };

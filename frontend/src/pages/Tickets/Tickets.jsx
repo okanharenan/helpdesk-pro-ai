@@ -72,6 +72,19 @@ const FILTERS = [
   { key: "CLOSED", label: "Fechados", icon: "ti-lock", accent: "#6b7280" },
 ];
 
+// Filtros rápidos por responsável (o contador mostra quantos tickets cada um tem)
+const QUICK_FILTERS = [
+  { key: "ALL", label: "Todos", icon: "ti-list" },
+  { key: "MINE", label: "Atribuídos a mim", icon: "ti-user-check" },
+  { key: "NONE", label: "Sem responsável", icon: "ti-user-question" },
+  { key: "CREATED", label: "Abertos por mim", icon: "ti-user-plus" },
+];
+
+// Máximo de tickets por atribuição em massa (o servidor também limita)
+const BULK_MAX = 100;
+
+const plural = (n, one, many) => (n === 1 ? one : many);
+
 export default function Tickets() {
   const navigate = useNavigate();
   const t = useThemeColors();
@@ -84,6 +97,13 @@ export default function Tickets() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("newest");
   const [assigneeFilter, setAssigneeFilter] = useState("ALL");
+  // Atribuição em massa (SUPERADMIN e ADMIN)
+  const [selected, setSelected] = useState([]);
+  const [assignees, setAssignees] = useState([]);
+  const [bulkTarget, setBulkTarget] = useState(""); // "" = ainda não escolheu | "NONE" | id da pessoa
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState(null);
+  const canAssign = me?.role === "SUPERADMIN" || me?.role === "ADMIN";
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -111,6 +131,15 @@ export default function Tickets() {
     fetchTickets();
   }, []);
 
+  useEffect(() => {
+    if (!canAssign) return;
+    axios
+      .get(`${API}/tickets/assignees`, { headers })
+      .then((res) => setAssignees(res.data))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canAssign]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -135,14 +164,16 @@ export default function Tickets() {
     }
   };
 
+  const matchesAssignee = (tk) =>
+    assigneeFilter === "ALL" ||
+    (assigneeFilter === "NONE" && !tk.assigneeId) ||
+    (assigneeFilter === "MINE" && tk.assigneeId === me?.id) ||
+    (assigneeFilter === "CREATED" && tk.userId === me?.id) ||
+    (assigneeFilter.startsWith("ID:") && tk.assigneeId === Number(assigneeFilter.slice(3)));
+
   const sorted = [...tickets]
     .filter((tk) => filter === "ALL" || tk.status === filter)
-    .filter(
-      (tk) =>
-        assigneeFilter === "ALL" ||
-        (assigneeFilter === "NONE" && !tk.assigneeId) ||
-        (assigneeFilter === "MINE" && tk.assigneeId === me?.id),
-    )
+    .filter(matchesAssignee)
     .filter(
       (tk) =>
         !search ||
@@ -160,6 +191,7 @@ export default function Tickets() {
 
   useEffect(() => {
     setPage(1);
+    setSelected([]); // evita atribuir sem querer tickets que o filtro já escondeu
   }, [filter, search, sort, assigneeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
@@ -173,10 +205,76 @@ export default function Tickets() {
     CLOSED: tickets.filter((t) => t.status === "CLOSED").length,
   };
 
-  // Tickets que ainda podem ser iniciados (abertos/em andamento e sem responsável)
-  const unassignedCount = tickets.filter(
-    (t) => !t.assigneeId && ["OPEN", "DOING"].includes(t.status),
-  ).length;
+  // Contadores dos filtros rápidos (respeitam o status escolhido nos cartões lá em cima)
+  const byStatus = tickets.filter((tk) => filter === "ALL" || tk.status === filter);
+  const quickCounts = {
+    ALL: byStatus.length,
+    MINE: byStatus.filter((tk) => tk.assigneeId === me?.id).length,
+    NONE: byStatus.filter((tk) => !tk.assigneeId).length,
+    CREATED: byStatus.filter((tk) => tk.userId === me?.id).length,
+  };
+
+  // Seleção das caixinhas
+  const pageIds = paginated.map((tk) => tk.id);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selected.includes(id));
+  const somePageSelected = pageIds.some((id) => selected.includes(id));
+  const selectableTotal = Math.min(sorted.length, BULK_MAX);
+
+  const toggleSelect = (id) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const togglePage = () =>
+    setSelected((prev) =>
+      allPageSelected
+        ? prev.filter((id) => !pageIds.includes(id))
+        : [...new Set([...prev, ...pageIds])].slice(0, BULK_MAX),
+    );
+  const selectAllFiltered = () => setSelected(sorted.slice(0, BULK_MAX).map((tk) => tk.id));
+
+  const flashBulk = (type, text) => {
+    setBulkMsg({ type, text });
+    setTimeout(() => setBulkMsg(null), 6000);
+  };
+
+  const handleBulkAssign = async () => {
+    if (!selected.length || bulkTarget === "") return;
+    setBulkSaving(true);
+    try {
+      const { data } = await axios.patch(
+        `${API}/tickets/bulk/assignee`,
+        { ticketIds: selected, assigneeId: bulkTarget === "NONE" ? null : Number(bulkTarget) },
+        { headers },
+      );
+      const parts = [];
+      if (data.updated > 0) {
+        parts.push(
+          data.assignee
+            ? `${data.updated} ${plural(data.updated, "ticket atribuído", "tickets atribuídos")} a ${data.assignee.name}`
+            : `${data.updated} ${plural(data.updated, "ticket ficou", "tickets ficaram")} sem responsável`,
+        );
+      } else {
+        parts.push("Nenhum ticket mudou");
+      }
+      if (data.unchanged > 0) {
+        parts.push(`${data.unchanged} ${plural(data.unchanged, "já estava", "já estavam")} com essa pessoa`);
+      }
+      if (data.notFound > 0) {
+        parts.push(`${data.notFound} ${plural(data.notFound, "não encontrado", "não encontrados")}`);
+      }
+      flashBulk(data.updated > 0 ? "ok" : "error", parts.join(" · "));
+      setSelected([]);
+      setBulkTarget("");
+      await fetchTickets();
+    } catch (err) {
+      flashBulk("error", err.response?.data?.message || "Não foi possível atribuir os tickets.");
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  // Com a coluna das caixinhas (só aparece para SUPERADMIN e ADMIN)
+  const GRID = canAssign
+    ? "28px 64px 1fr 150px 110px 150px 120px 80px"
+    : "64px 1fr 150px 110px 150px 120px 80px";
 
   const urgentCount = tickets.filter(
     (t) => t.priority === "HIGH" && t.status === "OPEN",
@@ -473,29 +571,6 @@ export default function Tickets() {
                 <option value="oldest">Mais antigos</option>
               </select>
 
-              {/* Filtro por responsável */}
-              <select
-                value={assigneeFilter}
-                onChange={(e) => setAssigneeFilter(e.target.value)}
-                style={{
-                  background: t.cardBg,
-                  border: `1px solid ${assigneeFilter !== "ALL" ? "#16a34a" : t.border}`,
-                  borderRadius: 9,
-                  padding: "8px 12px",
-                  fontSize: 12,
-                  color: t.textSecondary,
-                  fontFamily: "inherit",
-                  cursor: "pointer",
-                  outline: "none",
-                }}
-              >
-                <option value="ALL">Todos os responsáveis</option>
-                <option value="NONE">
-                  Sem responsável{unassignedCount > 0 ? ` (${unassignedCount})` : ""}
-                </option>
-                <option value="MINE">Meus tickets</option>
-              </select>
-
               <button
                 onClick={() => setShowForm(true)}
                 style={{
@@ -532,6 +607,106 @@ export default function Tickets() {
                 Novo Ticket
               </button>
             </div>
+          </div>
+
+          {/* Resultado da atribuição em massa */}
+          {bulkMsg && (
+            <div
+              role="status"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 14,
+                padding: "10px 14px",
+                borderRadius: 10,
+                fontSize: 12,
+                fontWeight: 500,
+                background:
+                  bulkMsg.type === "ok"
+                    ? dark ? "rgba(22,163,74,0.12)" : "#f0fdf4"
+                    : dark ? "rgba(220,38,38,0.12)" : "#fef2f2",
+                color: bulkMsg.type === "ok" ? "#16a34a" : "#dc2626",
+                border: `1px solid ${bulkMsg.type === "ok" ? "rgba(22,163,74,0.3)" : "rgba(220,38,38,0.3)"}`,
+              }}
+            >
+              <i
+                className={`ti ${bulkMsg.type === "ok" ? "ti-circle-check" : "ti-alert-circle"}`}
+                style={{ fontSize: 15 }}
+                aria-hidden="true"
+              />
+              {bulkMsg.text}
+            </div>
+          )}
+
+          {/* Filtros rápidos por responsável */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+            {QUICK_FILTERS.map((q) => {
+              const active = assigneeFilter === q.key;
+              return (
+                <button
+                  key={q.key}
+                  type="button"
+                  onClick={() => setAssigneeFilter(q.key)}
+                  aria-pressed={active}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "7px 13px",
+                    borderRadius: 99,
+                    fontSize: 12,
+                    fontWeight: active ? 600 : 500,
+                    fontFamily: "inherit",
+                    cursor: "pointer",
+                    color: active ? "#16a34a" : t.textSecondary,
+                    background: active ? (dark ? "rgba(22,163,74,0.12)" : "#f0fdf4") : t.cardBg,
+                    border: `1px solid ${active ? "#16a34a" : t.border}`,
+                  }}
+                >
+                  <i className={`ti ${q.icon}`} style={{ fontSize: 14 }} aria-hidden="true" />
+                  {q.label}
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: "1px 7px",
+                      borderRadius: 99,
+                      background: active ? "rgba(22,163,74,0.18)" : dark ? "#1f1f1f" : "#f3f4f6",
+                      color: active ? "#16a34a" : t.textMuted,
+                    }}
+                  >
+                    {quickCounts[q.key]}
+                  </span>
+                </button>
+              );
+            })}
+
+            {canAssign && assignees.length > 0 && (
+              <select
+                value={assigneeFilter.startsWith("ID:") ? assigneeFilter : ""}
+                onChange={(e) => setAssigneeFilter(e.target.value || "ALL")}
+                aria-label="Filtrar por pessoa"
+                style={{
+                  background: t.cardBg,
+                  border: `1px solid ${assigneeFilter.startsWith("ID:") ? "#16a34a" : t.border}`,
+                  borderRadius: 99,
+                  padding: "7px 12px",
+                  fontSize: 12,
+                  color: t.textSecondary,
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  outline: "none",
+                }}
+              >
+                <option value="">Filtrar por pessoa...</option>
+                {assignees.map((u) => (
+                  <option key={u.id} value={`ID:${u.id}`}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Lista */}
@@ -627,7 +802,7 @@ export default function Tickets() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "64px 1fr 150px 110px 150px 120px 80px",
+                  gridTemplateColumns: GRID,
                   gap: 12,
                   padding: "11px 16px",
                   borderBottom: `1px solid ${t.border}`,
@@ -639,6 +814,18 @@ export default function Tickets() {
                   borderRadius: "14px 14px 0 0",
                 }}
               >
+                {canAssign && (
+                  <input
+                    type="checkbox"
+                    checked={allPageSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = somePageSelected && !allPageSelected;
+                    }}
+                    onChange={togglePage}
+                    aria-label="Selecionar todos os tickets desta página"
+                    style={{ cursor: "pointer", accentColor: "#16a34a" }}
+                  />
+                )}
                 <span>ID</span>
                 <span>Chamado</span>
                 <span>Status</span>
@@ -651,28 +838,44 @@ export default function Tickets() {
               {paginated.map((tk, i) => {
                 const st = STATUS[tk.status];
                 const pr = PRIORITY[tk.priority];
+                const isSelected = selected.includes(tk.id);
+                const selectedBg = dark ? "rgba(22,163,74,0.08)" : "#f0fdf4";
                 return (
                   <div
                     key={tk.id}
                     className={`anim-fade anim-d${Math.min(i + 1, 5)}`}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "64px 1fr 150px 110px 150px 120px 80px",
+                      gridTemplateColumns: GRID,
                       gap: 12,
                       padding: "14px 16px",
                       borderBottom: `1px solid ${t.borderLight}`,
                       alignItems: "center",
                       transition: "background 0.12s",
                       cursor: "pointer",
+                      background: isSelected ? selectedBg : "transparent",
                     }}
                     onClick={() => navigate(`/tickets/${tk.id}`)}
                     onMouseEnter={(e) =>
                       (e.currentTarget.style.background = t.rowHover)
                     }
                     onMouseLeave={(e) =>
-                      (e.currentTarget.style.background = "transparent")
+                      (e.currentTarget.style.background = isSelected ? selectedBg : "transparent")
                     }
                   >
+                    {/* Seleção (atribuição em massa) */}
+                    {canAssign && (
+                      <div onClick={(e) => e.stopPropagation()} style={{ display: "flex" }}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(tk.id)}
+                          aria-label={`Selecionar o ticket #${tk.id}`}
+                          style={{ cursor: "pointer", accentColor: "#16a34a" }}
+                        />
+                      </div>
+                    )}
+
                     {/* ID */}
                     <div>
                       <span
@@ -941,6 +1144,123 @@ export default function Tickets() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Barra de atribuição em massa */}
+          {canAssign && selected.length > 0 && (
+            <div
+              role="region"
+              aria-label="Atribuição em massa"
+              style={{
+                position: "sticky",
+                bottom: 16,
+                zIndex: 20,
+                marginTop: 14,
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+                padding: "12px 16px",
+                background: t.cardBg,
+                border: "1px solid #16a34a",
+                borderRadius: 12,
+                boxShadow: dark ? "0 8px 24px rgba(0,0,0,0.5)" : "0 8px 24px rgba(0,0,0,0.12)",
+              }}
+            >
+              <span style={{ fontSize: 13, color: t.textPrimary }}>
+                <strong>{selected.length}</strong> {plural(selected.length, "selecionado", "selecionados")}
+              </span>
+
+              {selected.length < selectableTotal && (
+                <button
+                  type="button"
+                  onClick={selectAllFiltered}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    fontSize: 12,
+                    color: "#16a34a",
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Selecionar todos os {selectableTotal}
+                  {sorted.length > BULK_MAX ? " (máximo por vez)" : " deste filtro"}
+                </button>
+              )}
+
+              <div style={{ flex: 1 }} />
+
+              <select
+                value={bulkTarget}
+                onChange={(e) => setBulkTarget(e.target.value)}
+                disabled={bulkSaving}
+                aria-label="Atribuir os tickets selecionados a"
+                style={{
+                  background: t.inputBg,
+                  border: `1px solid ${bulkTarget !== "" ? "#16a34a" : t.border}`,
+                  borderRadius: 9,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  color: t.textPrimary,
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  outline: "none",
+                  minWidth: 190,
+                }}
+              >
+                <option value="" disabled>
+                  Atribuir a...
+                </option>
+                <option value="NONE">Sem responsável (remover)</option>
+                {assignees.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={handleBulkAssign}
+                disabled={bulkTarget === "" || bulkSaving}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 9,
+                  border: "none",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  fontFamily: "inherit",
+                  color: "#fff",
+                  background: "linear-gradient(135deg,#16a34a,#22c55e)",
+                  cursor: bulkTarget === "" || bulkSaving ? "not-allowed" : "pointer",
+                  opacity: bulkTarget === "" || bulkSaving ? 0.5 : 1,
+                }}
+              >
+                {bulkSaving ? "Atribuindo..." : "Aplicar"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelected([])}
+                disabled={bulkSaving}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 9,
+                  border: `1px solid ${t.border}`,
+                  background: "transparent",
+                  color: t.textSecondary,
+                  fontSize: 12,
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                }}
+              >
+                Limpar seleção
+              </button>
             </div>
           )}
         </div>

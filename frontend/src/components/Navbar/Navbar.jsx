@@ -5,11 +5,11 @@ import { useState, useEffect, useRef } from 'react'
 
 // Ícone e cor de cada tipo de notificação
 const TYPE_META = {
-  ASSIGNED:       { icon: 'ti-user-check',      color: '#16a34a' },
-  UNASSIGNED:     { icon: 'ti-user-minus',      color: '#6b7280' },
-  TAKEN:          { icon: 'ti-hand-grab',       color: '#2563eb' },
-  STATUS_CHANGED: { icon: 'ti-refresh',         color: '#2563eb' },
-  COMMENT:        { icon: 'ti-message-circle',  color: '#7c3aed' },
+  ASSIGNED: { icon: 'ti-user-check', color: '#16a34a' },
+  UNASSIGNED: { icon: 'ti-user-minus', color: '#6b7280' },
+  TAKEN: { icon: 'ti-hand-grab', color: '#2563eb' },
+  STATUS_CHANGED: { icon: 'ti-refresh', color: '#2563eb' },
+  COMMENT: { icon: 'ti-message-circle', color: '#7c3aed' },
 }
 const metaFor = n =>
   n.title?.includes('urgente')
@@ -18,7 +18,7 @@ const metaFor = n =>
 
 function timeAgo(date) {
   const diff = (Date.now() - new Date(date)) / 1000
-  if (diff < 60)   return 'agora'
+  if (diff < 60) return 'agora'
   if (diff < 3600) return `${Math.floor(diff / 60)}min`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h`
   return `${Math.floor(diff / 86400)}d`
@@ -43,11 +43,11 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
   const [tab, setTab] = useState('ALL')          // 'ALL' | 'UNREAD'
   const [justMarked, setJustMarked] = useState(false) // feedback ao marcar tudo como lido
 
-  const bg      = dark ? '#0f0f0f' : '#ffffff'
-  const border  = dark ? '#1f1f1f' : '#e5e7eb'
-  const text    = dark ? '#f4f4f4' : '#111111'
-  const muted   = dark ? '#666666' : '#9ca3af'
-  const sec     = dark ? '#c0c0c0' : '#374151'
+  const bg = dark ? '#0f0f0f' : '#ffffff'
+  const border = dark ? '#1f1f1f' : '#e5e7eb'
+  const text = dark ? '#f4f4f4' : '#111111'
+  const muted = dark ? '#666666' : '#9ca3af'
+  const sec = dark ? '#c0c0c0' : '#374151'
   const inputBg = dark ? '#1a1a1a' : '#f9fafb'
 
   // Fecha ao clicar fora
@@ -86,14 +86,13 @@ export default function Navbar({ title = 'Dashboard', subtitle = 'visão geral' 
 
   const handleOpenTicket = n => {
     markNotificationRead?.(n.id)
-    if (n.ticketId) navigate(`/tickets/${n.ticketId}`)
+    navigate(n.ticketId ? `/tickets/${n.ticketId}` : '/tickets') // aviso de vários tickets abre a lista
     setShowNotif(false)
   }
 
   const handleOpenToast = () => {
-    if (!toast) return
     markNotificationRead?.(toast.id)
-    if (toast.ticketId) navigate(`/tickets/${toast.ticketId}`)
+    navigate(toast.ticketId ? `/tickets/${toast.ticketId}` : '/tickets')
     dismissToast?.()
   }
 

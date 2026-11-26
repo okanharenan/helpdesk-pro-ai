@@ -22,4 +22,10 @@ const assignTicketSchema = z.object({
   assigneeId: z.number().int().positive().nullable(),
 });
 
-module.exports = { createTicketSchema, updateTicketSchema, addCommentSchema, assignTicketSchema };
+// Atribuição em massa: até 100 tickets por vez; assigneeId = null deixa todos sem responsável
+const bulkAssignTicketsSchema = z.object({
+  ticketIds: z.array(z.number().int().positive()).min(1, "selecione ao menos um ticket").max(100, "máximo de 100 tickets por vez"),
+  assigneeId: z.number().int().positive().nullable(),
+});
+
+module.exports = { createTicketSchema, updateTicketSchema, addCommentSchema, assignTicketSchema, bulkAssignTicketsSchema };
